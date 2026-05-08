@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghid Configurare – ESP32 MQTT Home Assistant DIY Kit</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;line-height:1.7}
+  a{color:#2563eb}
+
+  /* Header */
+  .header{background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);color:#fff;padding:48px 24px 36px;text-align:center}
+  .header h1{font-size:2.2em;margin-bottom:8px}
+  .header p{opacity:.9;font-size:1.05em;max-width:620px;margin:0 auto}
+
+  /* Layout */
+  .page{max-width:860px;margin:0 auto;padding:32px 16px 60px}
+
+  /* Intro box */
+  .intro{background:#fff;border-radius:14px;padding:24px 28px;margin-bottom:32px;box-shadow:0 2px 12px rgba(0,0,0,.07);border-left:5px solid #3b82f6}
+  .intro h2{color:#1e40af;margin-bottom:10px}
+
+  /* Step card */
+  .step{background:#fff;border-radius:14px;padding:0;margin-bottom:28px;box-shadow:0 2px 14px rgba(0,0,0,.08);overflow:hidden}
+  .step-header{display:flex;align-items:center;gap:16px;padding:20px 28px;background:linear-gradient(90deg,#1e40af,#3b82f6);color:#fff}
+  .step-num{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:1.4em;font-weight:700;flex-shrink:0}
+  .step-header h2{font-size:1.25em;font-weight:700}
+  .step-body{padding:24px 28px}
+
+  /* Sub-steps */
+  .substep{display:flex;gap:14px;margin-bottom:16px;align-items:flex-start}
+  .substep-num{min-width:28px;height:28px;background:#dbeafe;color:#1e40af;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9em;flex-shrink:0;margin-top:2px}
+  .substep-text{}
+
+  /* Info / warning / success boxes */
+  .box{border-radius:10px;padding:14px 18px;margin:16px 0;font-size:.93em}
+  .box-info{background:#eff6ff;border-left:4px solid #3b82f6;color:#1e40af}
+  .box-warn{background:#fffbeb;border-left:4px solid #f59e0b;color:#92400e}
+  .box-ok{background:#f0fdf4;border-left:4px solid #22c55e;color:#166534}
+  .box strong{display:block;margin-bottom:4px;font-size:1em}
+
+  /* Badges */
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.82em;font-weight:700;margin:2px 3px}
+  .badge-blue{background:#dbeafe;color:#1e40af}
+  .badge-green{background:#dcfce7;color:#166534}
+  .badge-gray{background:#f1f5f9;color:#475569}
+
+  /* Code / monospace */
+  code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;font-size:.93em;font-family:'Courier New',monospace;color:#dc2626}
+  .code-block{background:#1e293b;color:#e2e8f0;border-radius:10px;padding:16px 20px;font-family:'Courier New',monospace;font-size:.9em;margin:12px 0;overflow-x:auto;line-height:1.7}
+  .code-block .c{color:#64748b}
+  .code-block .s{color:#86efac}
+  .code-block .k{color:#93c5fd}
+
+  /* Hardware table */
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.93em}
+  th{background:#1e40af;color:#fff;padding:10px 14px;text-align:left;font-weight:600}
+  td{padding:9px 14px;border-bottom:1px solid #e2e8f0}
+  tr:nth-child(even) td{background:#f8fafc}
+  tr:last-child td{border-bottom:none}
+
+  /* Screenshot placeholder */
+  .screen{background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;padding:20px;text-align:center;color:#94a3b8;font-size:.9em;margin:12px 0}
+  .screen span{font-size:2em;display:block;margin-bottom:6px}
+
+  /* Checklist */
+  .checklist{list-style:none;margin:10px 0}
+  .checklist li{padding:6px 0;display:flex;align-items:flex-start;gap:10px}
+  .checklist li::before{content:"☐";font-size:1.1em;color:#3b82f6;flex-shrink:0;margin-top:1px}
+
+  /* Footer */
+  .footer{text-align:center;color:#94a3b8;font-size:.85em;padding:20px 0;border-top:1px solid #e2e8f0;margin-top:20px}
+
+  @media print{
+    body{background:#fff}
+    .page{padding:0}
+    .step{box-shadow:none;border:1px solid #e2e8f0;page-break-inside:avoid}
+  }
+  @media(max-width:600px){
+    .header h1{font-size:1.5em}
+    .step-body{padding:16px}
+    .substep{flex-direction:column;gap:6px}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>&#127968; ESP32 MQTT Home Assistant DIY Kit</h1>
+  <p>Ghid complet de conectare și configurare pas cu pas</p>
+</div>
+
+<div class="page">
+
+  <!-- ── INTRO ── -->
+  <div class="intro">
+    <h2>&#128218; Ce conține acest kit?</h2>
+    <p>Kitul conține un microcontroler <strong>ESP32</strong> programat gata de utilizare, care se conectează la rețeaua WiFi și transmite date către <strong>Home Assistant</strong> prin protocolul MQTT. Toate setările se fac din browser — <strong>fără cod, fără cabluri USB, fără aplicații suplimentare</strong>.</p>
+    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px">
+      <span class="badge badge-blue">&#127777;&#65039; Senzor temperatură DHT11</span>
+      <span class="badge badge-blue">&#128167; Senzor umiditate DHT11</span>
+      <span class="badge badge-blue">&#128065;&#65039; Senzor mișcare PIR HC-SR501</span>
+      <span class="badge badge-blue">&#9889; Releu SSR 5V</span>
+      <span class="badge badge-blue">&#128250; Display OLED 0.96"</span>
+      <span class="badge badge-green">WiFi 2.4GHz integrat</span>
+      <span class="badge badge-green">MQTT Auto-Discovery HA</span>
+    </div>
+  </div>
+
+  <!-- ── CERINTE ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">&#10003;</div>
+      <div>
+        <h2>Cerințe înainte de începere</h2>
+        <div style="opacity:.85;font-size:.9em">Asigurați-vă că aveți pregătite următoarele</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <ul class="checklist">
+        <li>Router WiFi <strong>2.4 GHz</strong> (ESP32 nu suportă 5 GHz)</li>
+        <li><strong>Home Assistant</strong> instalat și funcțional (Raspberry Pi, PC, VM, etc.)</li>
+        <li>Add-on <strong>Mosquitto MQTT Broker</strong> instalat și pornit în Home Assistant</li>
+        <li>Integrarea <strong>MQTT</strong> activată în Home Assistant</li>
+        <li>Un dispozitiv cu browser (telefon, laptop, tabletă)</li>
+        <li>Sursa de alimentare 5V / min. 500mA pentru kit</li>
+      </ul>
+
+      <div class="box box-info">
+        <strong>&#8505; Unde găsesc IP-ul Home Assistant?</strong>
+        În Home Assistant: <strong>Setări → Sistem → Rețea</strong>. Notați adresa IP — veți avea nevoie de ea la pasul 3.
+      </div>
+
+      <div class="box box-warn">
+        <strong>&#9888; Mosquitto Broker — instalare rapidă</strong>
+        Home Assistant → <strong>Setări → Add-ons → Add-on Store</strong> → căutați <em>Mosquitto broker</em> → Instalați → Porniți → activați <em>Start on boot</em>.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAS 1: ALIMENTARE ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div>
+        <h2>Alimentați kitul</h2>
+        <div style="opacity:.85;font-size:.9em">Prima pornire — modul Access Point</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <div class="substep">
+        <div class="substep-num">1</div>
+        <div class="substep-text">Conectați kitul la o sursă de alimentare <strong>5V</strong> prin portul <strong>Type-C</strong> (sau cablu USB-C).</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">2</div>
+        <div class="substep-text">LED-ul de pe plăcuță va începe să clipească (heartbeat) — semn că ESP32 a pornit corect.</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">3</div>
+        <div class="substep-text">Display-ul OLED va afișa <em>"ESP32 HA Kit – Initializing..."</em> apoi ecranul de status.</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">4</div>
+        <div class="substep-text">La prima pornire (fără WiFi configurat), ESP32 creează automat o rețea WiFi proprie (Access Point).</div>
+      </div>
+
+      <div class="box box-ok">
+        <strong>&#9989; Rețeaua WiFi a kit-ului:</strong>
+        Nume (SSID): <code>ESP32_HAKit</code> &nbsp;|&nbsp; Parolă: <code>12345678</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAS 2: CONFIGURARE WIFI ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div>
+        <h2>Configurați conexiunea WiFi</h2>
+        <div style="opacity:.85;font-size:.9em">Conectați kitul la rețeaua dumneavoastră</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <div class="substep">
+        <div class="substep-num">1</div>
+        <div class="substep-text">
+          Pe telefon sau laptop, deschideți lista de rețele WiFi și conectați-vă la:
+          <br><br>
+          <code>ESP32_HAKit</code> &nbsp; parolă: <code>12345678</code>
+        </div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">2</div>
+        <div class="substep-text">
+          Deschideți browserul și accesați:
+          <br><br>
+          <code>http://192.168.4.1</code>
+          <br><br>
+          Se va deschide dashboard-ul ESP32.
+        </div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">3</div>
+        <div class="substep-text">Apăsați tab-ul <strong>📡 WiFi</strong>.</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">4</div>
+        <div class="substep-text">Completați:
+          <br>• <strong>SSID</strong> = numele rețelei WiFi de acasă
+          <br>• <strong>Parolă</strong> = parola rețelei WiFi de acasă
+        </div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">5</div>
+        <div class="substep-text">Apăsați <strong>💾 Salvează și conectează</strong>. ESP32 se va reporni și se va conecta la rețeaua dvs.</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">6</div>
+        <div class="substep-text">Reconectați-vă telefonul/laptopul la rețeaua WiFi de acasă. Pe display-ul OLED va apărea <strong>IP-ul</strong> primit de kit (ex. <code>192.168.1.20</code>).</div>
+      </div>
+
+      <div class="box box-info">
+        <strong>&#8505; Nu vedeți IP-ul pe OLED?</strong>
+        Verificați în routerul dumneavoastră lista de dispozitive conectate și căutați <em>esp32-ha-kit</em> sau <em>ESP32</em>.
+      </div>
+      <div class="box box-warn">
+        <strong>&#9888; WiFi se conectează dar se deconectează imediat?</strong>
+        Asigurați-vă că rețeaua este <strong>2.4 GHz</strong>. Dacă aveți router dual-band cu același nume SSID pentru 2.4 și 5 GHz, dezactivați temporar banda de 5 GHz sau creați un SSID separat pentru 2.4 GHz.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAS 3: CONFIGURARE MQTT ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div>
+        <h2>Configurați conexiunea MQTT</h2>
+        <div style="opacity:.85;font-size:.9em">Legătura cu Home Assistant</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <div class="substep">
+        <div class="substep-num">1</div>
+        <div class="substep-text">
+          Din browser, accesați kitul la IP-ul afișat pe OLED (ex. <code>http://192.168.1.20</code>).
+        </div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">2</div>
+        <div class="substep-text">Apăsați tab-ul <strong>🔌 MQTT</strong>.</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">3</div>
+        <div class="substep-text">
+          Completați câmpurile:
+          <br><br>
+          <table>
+            <tr><th>Câmp</th><th>Valoare de completat</th></tr>
+            <tr><td><strong>Adresa IP broker</strong></td><td>IP-ul mașinii cu Home Assistant (ex. <code>192.168.1.50</code>)</td></tr>
+            <tr><td><strong>Port</strong></td><td><code>1883</code> (valoarea implicită Mosquitto)</td></tr>
+            <tr><td><strong>Client ID</strong></td><td>Lăsați <code>esp32-ha-kit</code> sau schimbați dacă aveți mai multe kit-uri</td></tr>
+            <tr><td><strong>Utilizator</strong></td><td>Dacă Mosquitto cere autentificare — utilizatorul configurat</td></tr>
+            <tr><td><strong>Parolă</strong></td><td>Dacă Mosquitto cere autentificare — parola configurată</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">4</div>
+        <div class="substep-text">Apăsați <strong>💾 Salvează și aplică</strong>. ESP32 se va conecta imediat la broker.</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">5</div>
+        <div class="substep-text">Bara din partea de sus a tab-ului va deveni <span style="color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px;font-size:.9em">✔ MQTT: Conectat</span> dacă totul este corect.</div>
+      </div>
+
+      <div class="box box-info">
+        <strong>&#8505; Nu știu IP-ul Home Assistant</strong>
+        Home Assistant → <strong>Setări → Sistem → Rețea</strong> → vedeți adresa IPv4. Alternativ, în routerul dumneavoastră căutați dispozitivul numit <em>homeassistant</em>.
+      </div>
+      <div class="box box-warn">
+        <strong>&#9888; MQTT rămâne deconectat (rc=-2)?</strong>
+        Verificați: (1) IP-ul brokerului este corect; (2) Add-on-ul Mosquitto este pornit în HA; (3) Firewall-ul nu blochează portul 1883; (4) Kitul și HA sunt în aceeași rețea locală.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAS 4: HOME ASSISTANT ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div>
+        <h2>Verificați în Home Assistant</h2>
+        <div style="opacity:.85;font-size:.9em">Entitățile apar automat prin MQTT Discovery</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <div class="substep">
+        <div class="substep-num">1</div>
+        <div class="substep-text">
+          În Home Assistant mergeți la <strong>Setări → Dispozitive și servicii → MQTT</strong>.
+        </div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">2</div>
+        <div class="substep-text">
+          Veți găsi dispozitivul <strong>ESP32 HA Kit</strong> cu 4 entități create automat:
+          <br><br>
+          <table>
+            <tr><th>Entitate</th><th>Tip</th><th>Topic MQTT</th></tr>
+            <tr><td>🌡️ Temperatura</td><td>Senzor (°C)</td><td><code>esp32kit/state</code></td></tr>
+            <tr><td>💧 Umiditate</td><td>Senzor (%)</td><td><code>esp32kit/state</code></td></tr>
+            <tr><td>👁️ Mișcare</td><td>Senzor binar</td><td><code>esp32kit/state</code></td></tr>
+            <tr><td>⚡ Releu</td><td>Switch ON/OFF</td><td><code>esp32kit/relay/command</code></td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">3</div>
+        <div class="substep-text">Adăugați entitățile pe un <strong>Dashboard</strong> în Home Assistant pentru monitorizare în timp real.</div>
+      </div>
+      <div class="substep">
+        <div class="substep-num">4</div>
+        <div class="substep-text">Puteți crea <strong>Automatizări</strong> — ex: când se detectează mișcare → trimiteți notificare pe telefon, sau porniți releul.</div>
+      </div>
+
+      <div class="box box-ok">
+        <strong>&#9989; Datele se actualizează automat:</strong>
+        La fiecare <strong>30 secunde</strong> (publicare periodică) și <strong>imediat</strong> la detectarea mișcării.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CABLAJ HARDWARE ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num" style="font-size:1.1em">&#128268;</div>
+      <div>
+        <h2>Referință cablaj hardware</h2>
+        <div style="opacity:.85;font-size:.9em">Pinii folosiți pe ESP32</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <table>
+        <tr><th>Componentă</th><th>Pin ESP32</th><th>Detaliu</th></tr>
+        <tr><td>&#127777;&#65039; DHT11 (KY-015) — DATA</td><td><code>GPIO4</code></td><td>VCC = 3.3V, GND = GND</td></tr>
+        <tr><td>&#128065;&#65039; PIR HC-SR501 — OUT</td><td><code>GPIO32</code></td><td>VCC = 5V, GND = GND</td></tr>
+        <tr><td>&#9889; Releu SSR — IN</td><td><code>GPIO23</code></td><td>VCC = 5V, GND = GND &nbsp;|&nbsp; LOW = pornit</td></tr>
+        <tr><td>&#128250; OLED SSD1306 — SDA</td><td><code>GPIO21</code></td><td>VCC = 3.3V, GND = GND</td></tr>
+        <tr><td>&#128250; OLED SSD1306 — SCL</td><td><code>GPIO22</code></td><td>Adresă I²C: <code>0x3C</code></td></tr>
+        <tr><td>&#128161; LED heartbeat</td><td><code>GPIO18</code></td><td>Rezistor 220Ω</td></tr>
+      </table>
+
+      <div class="box box-warn">
+        <strong>&#9888; Atenție la tensiuni!</strong>
+        DHT11 și OLED se alimentează la <strong>3.3V</strong>. Senzorul PIR și releul se alimentează la <strong>5V</strong>. Nu inversați tensiunile — puteți deteriora componentele.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD WEB ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num" style="font-size:1.1em">&#128202;</div>
+      <div>
+        <h2>Dashboard Web integrat</h2>
+        <div style="opacity:.85;font-size:.9em">Monitorizare și control direct din browser</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <p>Pe lângă Home Assistant, kitul oferă un dashboard web propriu accesibil din orice browser din aceeași rețea:</p>
+      <br>
+      <div class="code-block">
+        <span class="c">// Accesați în browser (înlocuiți cu IP-ul real al kit-ului):</span><br>
+        <span class="k">http://</span><span class="s">192.168.1.20</span>
+      </div>
+
+      <table>
+        <tr><th>Tab</th><th>Funcție</th></tr>
+        <tr><td>&#128202; <strong>Dashboard</strong></td><td>Temperatură, umiditate, status mișcare PIR, control releu ON/OFF, status MQTT</td></tr>
+        <tr><td>&#128268; <strong>MQTT</strong></td><td>Configurare broker IP, port, user, parolă — salvat în memoria kit-ului</td></tr>
+        <tr><td>&#128225; <strong>WiFi</strong></td><td>Schimbarea rețelei WiFi la care este conectat kit-ul</td></tr>
+        <tr><td>&#128203; <strong>Info Placă</strong></td><td>Detalii tehnice ESP32: chip, memorie, MAC, uptime</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── TROUBLESHOOTING ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num" style="font-size:1.1em">&#128295;</div>
+      <div>
+        <h2>Depanare — probleme frecvente</h2>
+        <div style="opacity:.85;font-size:.9em">Soluții rapide</div>
+      </div>
+    </div>
+    <div class="step-body">
+
+      <div class="box box-warn" style="margin-bottom:10px">
+        <strong>&#10060; Nu pot accesa <code>http://192.168.4.1</code></strong>
+        Asigurați-vă că sunteți conectat la rețeaua <code>ESP32_HAKit</code> și nu la rețeaua de acasă. Dezactivați datele mobile pe telefon în timp ce vă conectați la kit.
+      </div>
+
+      <div class="box box-warn" style="margin-bottom:10px">
+        <strong>&#10060; WiFi salvat dar kit-ul revine în Access Point</strong>
+        Parola WiFi este greșită sau semnalul routerului este prea slab. Apropiați kit-ul de router și reintroduceți parola din tab-ul WiFi.
+      </div>
+
+      <div class="box box-warn" style="margin-bottom:10px">
+        <strong>&#10060; MQTT: rc=-2 (nu se conectează la broker)</strong>
+        (1) Verificați că IP-ul brokerului este corect. (2) Mosquitto rulează în HA? (3) Kitul și HA sunt în aceeași rețea locală? (4) Portul 1883 nu este blocat de firewall.
+      </div>
+
+      <div class="box box-warn" style="margin-bottom:10px">
+        <strong>&#10060; Temperatura/umiditatea nu apar (DHT11 invalid)</strong>
+        Verificați cablajul: DATA → GPIO4, VCC → 3.3V, GND → GND. DHT11 necesită câteva secunde după pornire pentru prima citire validă.
+      </div>
+
+      <div class="box box-warn" style="margin-bottom:10px">
+        <strong>&#10060; OLED nu afișează nimic</strong>
+        Verificați cablajul I²C: SDA → GPIO21, SCL → GPIO22. Adresa implicită este <code>0x3C</code>. Unele module OLED folosesc <code>0x3D</code> — verificați modulul.
+      </div>
+
+      <div class="box box-info">
+        <strong>&#128260; Reset complet la setările din fabrică</strong>
+        Dacă doriți să resetați toate setările (WiFi + MQTT), accesați tab-ul <strong>WiFi → 🗑️ Șterge</strong> din dashboard. La repornire, kit-ul va reveni în mod Access Point.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SPECIFICATII TEHNICE ── -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num" style="font-size:1.1em">&#128203;</div>
+      <div>
+        <h2>Specificații tehnice</h2>
+      </div>
+    </div>
+    <div class="step-body">
+      <table>
+        <tr><th>Parametru</th><th>Valoare</th></tr>
+        <tr><td>Microcontroler</td><td>ESP-WROOM-32 (Xtensa dual-core 240MHz)</td></tr>
+        <tr><td>WiFi</td><td>802.11 b/g/n, 2.4 GHz</td></tr>
+        <tr><td>Alimentare</td><td>5V / min. 500mA (port Type-C)</td></tr>
+        <tr><td>Protocol IoT</td><td>MQTT 3.1.1 (port 1883)</td></tr>
+        <tr><td>Temperatură măsurabilă</td><td>0°C – 50°C (±2°C) — DHT11</td></tr>
+        <tr><td>Umiditate măsurabilă</td><td>20% – 90% RH (±5%) — DHT11</td></tr>
+        <tr><td>Interval publicare MQTT</td><td>30 secunde (+ imediat la mișcare)</td></tr>
+        <tr><td>Releu SSR — sarcină maximă</td><td>Consultați specificațiile releului inclus</td></tr>
+        <tr><td>Display</td><td>OLED SSD1306 0.96" 128×64 I²C</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    ESP32 MQTT Home Assistant DIY Kit &bull; Ghid configurare client &bull; Versiunea 1.0
+  </div>
+
+</div>
+</body>
+</html>
