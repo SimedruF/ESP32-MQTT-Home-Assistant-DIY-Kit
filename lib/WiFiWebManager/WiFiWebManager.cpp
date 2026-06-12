@@ -1,4 +1,5 @@
 #include "WiFiWebManager.h"
+#include "../../include/SerialLog.h"
 
 WiFiWebManager::WiFiWebManager(const char* apSSID, const char* apPassword, int serverPort)
     : _apSSID(apSSID), _apPassword(apPassword), _serverPort(serverPort),
@@ -7,7 +8,7 @@ WiFiWebManager::WiFiWebManager(const char* apSSID, const char* apPassword, int s
 }
 
 bool WiFiWebManager::begin() {
-    Serial.println("\n=== WiFi Web Manager Initialization ===");
+    serialLog.println("\n=== WiFi Web Manager Initialization ===");
     
     // Load saved credentials
     loadCredentials();
@@ -15,14 +16,14 @@ bool WiFiWebManager::begin() {
     // Try to connect to WiFi if configured
     if (_wifiConfigured && connectToWiFi()) {
         _isAPMode = false;
-        Serial.println("✅ Mode: WiFi Client");
-        Serial.println("Open in browser: http://" + WiFi.localIP().toString());
+        serialLog.println("✅ Mode: WiFi Client");
+        serialLog.println("Open in browser: http://" + WiFi.localIP().toString());
     } else {
         // Start Access Point mode
         startAccessPoint();
         _isAPMode = true;
-        Serial.println("📡 Mode: Access Point");
-        Serial.println("Open in browser: http://" + WiFi.softAPIP().toString());
+        serialLog.println("📡 Mode: Access Point");
+        serialLog.println("Open in browser: http://" + WiFi.softAPIP().toString());
     }
     
     // Setup default routes for WiFi management
@@ -30,8 +31,8 @@ bool WiFiWebManager::begin() {
     
     // Start web server
     _server->begin();
-    Serial.println("✅ Web server started!");
-    Serial.println("=======================================\n");
+    serialLog.println("✅ Web server started!");
+    serialLog.println("=======================================\n");
     
     return true;
 }
@@ -85,7 +86,7 @@ void WiFiWebManager::saveCredentials(const String& ssid, const String& password)
     _savedPassword = password;
     _wifiConfigured = true;
     
-    Serial.println("WiFi credentials saved to EEPROM");
+    serialLog.println("WiFi credentials saved to EEPROM");
 }
 
 void WiFiWebManager::clearCredentials() {
@@ -98,7 +99,7 @@ void WiFiWebManager::clearCredentials() {
     _savedSSID = "";
     _savedPassword = "";
     
-    Serial.println("WiFi credentials cleared from EEPROM");
+    serialLog.println("WiFi credentials cleared from EEPROM");
 }
 
 String WiFiWebManager::getSavedSSID() const {
@@ -106,7 +107,7 @@ String WiFiWebManager::getSavedSSID() const {
 }
 
 void WiFiWebManager::restart() {
-    Serial.println("Restarting ESP32...");
+    serialLog.println("Restarting ESP32...");
     delay(1000);
     ESP.restart();
 }
@@ -120,10 +121,10 @@ void WiFiWebManager::loadCredentials() {
     if (_wifiConfigured) {
         _savedSSID = _preferences.getString("ssid", "");
         _savedPassword = _preferences.getString("password", "");
-        Serial.println("WiFi credentials loaded from EEPROM");
-        Serial.println("SSID: " + _savedSSID);
+        serialLog.println("WiFi credentials loaded from EEPROM");
+        serialLog.println("SSID: " + _savedSSID);
     } else {
-        Serial.println("No saved WiFi credentials");
+        serialLog.println("No saved WiFi credentials");
     }
     
     _preferences.end();
@@ -134,41 +135,41 @@ bool WiFiWebManager::connectToWiFi() {
         return false;
     }
     
-    Serial.println("Attempting to connect to WiFi: " + _savedSSID);
+    serialLog.println("Attempting to connect to WiFi: " + _savedSSID);
     WiFi.mode(WIFI_STA);
     WiFi.begin(_savedSSID.c_str(), _savedPassword.c_str());
     
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
         delay(500);
-        Serial.print(".");
+        serialLog.print(".");
         attempts++;
     }
     
     if (WiFi.status() == WL_CONNECTED) {
         _wifiConnected = true;
-        Serial.println("\n✅ Connected to WiFi!");
-        Serial.print("IP Address: ");
-        Serial.println(WiFi.localIP());
+        serialLog.println("\n✅ Connected to WiFi!");
+        serialLog.print("IP Address: ");
+        serialLog.println(WiFi.localIP());
         return true;
     } else {
-        Serial.println("\n❌ Could not connect to WiFi");
+        serialLog.println("\n❌ Could not connect to WiFi");
         return false;
     }
 }
 
 void WiFiWebManager::startAccessPoint() {
-    Serial.println("Starting Access Point...");
+    serialLog.println("Starting Access Point...");
     WiFi.mode(WIFI_AP);
     WiFi.softAP(_apSSID.c_str(), _apPassword.c_str());
     
     IPAddress IP = WiFi.softAPIP();
-    Serial.print("Access Point created! SSID: ");
-    Serial.println(_apSSID);
-    Serial.print("Password: ");
-    Serial.println(_apPassword);
-    Serial.print("IP Address: ");
-    Serial.println(IP);
+    serialLog.print("Access Point created! SSID: ");
+    serialLog.println(_apSSID);
+    serialLog.print("Password: ");
+    serialLog.println(_apPassword);
+    serialLog.print("IP Address: ");
+    serialLog.println(IP);
 }
 
 void WiFiWebManager::setupDefaultRoutes() {

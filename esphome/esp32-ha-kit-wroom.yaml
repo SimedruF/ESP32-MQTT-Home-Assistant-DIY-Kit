@@ -1,0 +1,18 @@
+substitutions:
+  device_name: "esp32-ha-kit-wroom"
+  friendly_name: "ESP32 HA Kit WROOM"
+  dht_pin: "GPIO4"
+  pir_pin: "GPIO32"
+  relay_pin: "GPIO23"
+  heartbeat_pin: "GPIO18"
+  sda_pin: "GPIO21"
+  scl_pin: "GPIO22"
+  oled_address: "0x3C"
+
+packages:
+  common: !include common.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf

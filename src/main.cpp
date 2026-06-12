@@ -1,13 +1,14 @@
 /*
   ESP32 MQTT Home Assistant DIY Kit
   ====================================
-  Hardware:
-  - ESP-WROOM-32 (30-pin, CH340, Type-C)
-  - Senzor temperatura/umiditate DHT11 KY-015  -> GPIO4
-  - Senzor PIR miscare HC-SR501                -> GPIO32
-  - Releu SSR Low-Level 5V (LOW = ON)          -> GPIO23
-  - OLED 0.96" SSD1306 I2C 128x64             -> SDA=GPIO21, SCL=GPIO22
-  - LED heartbeat                              -> GPIO18
+  Tintele suportate:
+  - ESP32-WROOM-32 / ESP32 Dev Module
+  - ESP32-C3-DevKitM-1
+  - ESP32-C6-DevKitC-1
+  - ESP32-S3-DevKitC-1
+
+  Pinii pentru DHT11, PIR, releu, OLED si heartbeat sunt configurabili
+  din interfata web si persistati in NVS.
 
   Functionalitati:
   - MQTT cu Home Assistant Auto-Discovery
@@ -16,13 +17,13 @@
   - Configurare WiFi prin browser (AP mode)
   - FreeRTOS tasks pentru citire senzori
 
-  IMPORTANT: Editati sectiunea "Configuratie MQTT" inainte de upload!
 */
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiWebManager.h>
 #include <WebPages.h>
+#include <HardwareConfig.h>
 #include <PubSubClient.h>
 #include <DHT.h>
 #include <Wire.h>
@@ -31,21 +32,15 @@
 #include <Preferences.h>
 #include <esp_chip_info.h>
 #include <esp_system.h>
+#include <SerialLog.h>
 
-// ============================================================
-//  Definitii pini hardware
-// ============================================================
-#define DHT_PIN         4       // DHT11 data line (KY-015)
 #define DHT_TYPE        DHT11
-#define PIR_PIN         32      // HC-SR501 OUT  (HIGH = miscare detectata)
-#define RELAY_PIN       23      // SSR Low-Level (LOW = releu ON, HIGH = releu OFF)
-#define HEARTBEAT_PIN   18      // LED status
 
-// OLED SSD1306 128x64 I2C (SDA=GPIO21, SCL=GPIO22 - default ESP32)
+// OLED SSD1306 128x64 I2C
 #define OLED_WIDTH      128
 #define OLED_HEIGHT     64
 #define OLED_RESET      -1
-#define OLED_ADDR       0x3C
+#define OLED_I2C_FREQ   400000UL
 
 // ============================================================
 //  Configuratie MQTT — stocata in NVS, editabila din pagina web
@@ -79,9 +74,9 @@ void loadMqttConfig()
   g_mqttPass     = mqttPrefs.getString("pass",     g_mqttPass);
   g_mqttClientId = mqttPrefs.getString("client_id",g_mqttClientId);
   mqttPrefs.end();
-  Serial.printf("[MQTT] Config NVS: %s:%d  user='%s'  client='%s'\n",
-                g_mqttBroker.c_str(), g_mqttPort,
-                g_mqttUser.c_str(), g_mqttClientId.c_str());
+  serialLog.printf("[MQTT] Config NVS: %s:%d  user='%s'  client='%s'\n",
+                   g_mqttBroker.c_str(), g_mqttPort,
+                   g_mqttUser.c_str(), g_mqttClientId.c_str());
 }
 
 void saveMqttConfig(const String& broker, int port,
@@ -100,23 +95,30 @@ void saveMqttConfig(const String& broker, int port,
   g_mqttUser     = user;
   g_mqttPass     = pass;
   g_mqttClientId = clientId;
-  Serial.println("[MQTT] Configuratie salvata in NVS");
+  serialLog.println("[MQTT] Configuratie salvata in NVS");
 }
 
 // ============================================================
 //  Obiecte globale
 // ============================================================
 WiFiWebManager   wifiManager("ESP32_HAKit", "12345678");
-DHT              dht(DHT_PIN, DHT_TYPE);
-Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
+DHT*             dht = nullptr;
+// Aceeasi frecventa in timpul si dupa transfer evita recrearea repetata a
+// handle-ului I2C in Arduino-ESP32 3.x.
+Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET,
+                     OLED_I2C_FREQ, OLED_I2C_FREQ);
 WiFiClient       wifiClient;
 PubSubClient     mqttClient(wifiClient);
+HardwareConfigStore hardwareStore;
+HardwareConfig      g_hardware;
+
+static bool g_oledReady = false;
+static bool g_oledFailureReported = false;
+static unsigned long g_restartAt = 0;
 
 // ============================================================
 //  Variabile partajate (protejate de mutex intre task-uri)
 // ============================================================
-portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
-
 volatile float g_temperature    = NAN;
 volatile float g_humidity       = NAN;
 volatile bool  g_motionDetected = false;
@@ -126,17 +128,23 @@ volatile bool  g_relayActive    = false;
 static bool g_mqttConnected      = false;
 static bool g_discoveryPublished = false;
 
+// Mutex FreeRTOS pentru date partajate intre task-uri
+// (portENTER_CRITICAL dezactiveaza intreruperile -> provoaca Interrupt WDT)
+SemaphoreHandle_t g_mutex = nullptr;
+
 // ============================================================
 //  Control releu
 // ============================================================
 void setRelay(bool active)
 {
-  // SSR Low-Level: LOW = releu pornit, HIGH = releu oprit
-  digitalWrite(RELAY_PIN, active ? LOW : HIGH);
+  if (g_hardware.relayPin == PIN_DISABLED) return;
 
-  portENTER_CRITICAL(&g_mux);
+  const uint8_t activeLevel = g_hardware.relayActiveLow ? LOW : HIGH;
+  digitalWrite(g_hardware.relayPin, active ? activeLevel : !activeLevel);
+
+  xSemaphoreTake(g_mutex, portMAX_DELAY);
   g_relayActive = active;
-  portEXIT_CRITICAL(&g_mux);
+  xSemaphoreGive(g_mutex);
 
   if (mqttClient.connected())
     mqttClient.publish(TOPIC_RELAY_STATE, active ? "ON" : "OFF", /*retain=*/true);
@@ -145,17 +153,41 @@ void setRelay(bool active)
 // ============================================================
 //  OLED helpers  (apelat doar din loop() - Wire-safe pe core 1)
 // ============================================================
+bool isI2cDevicePresent(uint8_t address)
+{
+  Wire.beginTransmission(address);
+  return Wire.endTransmission(true) == 0;
+}
+
+void disableOled(const __FlashStringHelper* reason)
+{
+  g_oledReady = false;
+  if (!g_oledFailureReported)
+  {
+    serialLog.print(F("[OLED] Dezactivat: "));
+    serialLog.println(reason);
+    g_oledFailureReported = true;
+  }
+}
+
 void oledDrawStatus()
 {
+  if (!g_oledReady) return;
+  if (!isI2cDevicePresent(g_hardware.oledAddress))
+  {
+    disableOled(F("display-ul nu mai raspunde pe magistrala I2C"));
+    return;
+  }
+
   float temp, hum;
   bool  motion, relay;
 
-  portENTER_CRITICAL(&g_mux);
+  xSemaphoreTake(g_mutex, portMAX_DELAY);
   temp   = g_temperature;
   hum    = g_humidity;
   motion = g_motionDetected;
   relay  = g_relayActive;
-  portEXIT_CRITICAL(&g_mux);
+  xSemaphoreGive(g_mutex);
 
   oled.clearDisplay();
   oled.setTextColor(SSD1306_WHITE);
@@ -231,26 +263,29 @@ void taskSensors(void* parameter)
     unsigned long now = millis();
 
     // DHT11: citire la fiecare 2 secunde (max 1 citire/sec conform datasheet)
-    if (now - lastDhtRead >= 2000)
+    if (dht != nullptr && now - lastDhtRead >= 2000)
     {
       lastDhtRead = now;
-      float t = dht.readTemperature();
-      float h = dht.readHumidity();
+      float t = dht->readTemperature();
+      float h = dht->readHumidity();
 
       if (!isnan(t) && !isnan(h))
       {
-        portENTER_CRITICAL(&g_mux);
+        xSemaphoreTake(g_mutex, portMAX_DELAY);
         g_temperature = t;
         g_humidity    = h;
-        portEXIT_CRITICAL(&g_mux);
+        xSemaphoreGive(g_mutex);
       }
     }
 
     // PIR HC-SR501: citire continua (HIGH = miscare detectata)
-    bool motion = (digitalRead(PIR_PIN) == HIGH);
-    portENTER_CRITICAL(&g_mux);
-    g_motionDetected = motion;
-    portEXIT_CRITICAL(&g_mux);
+    if (g_hardware.pirPin != PIN_DISABLED)
+    {
+      bool motion = (digitalRead(g_hardware.pirPin) == HIGH);
+      xSemaphoreTake(g_mutex, portMAX_DELAY);
+      g_motionDetected = motion;
+      xSemaphoreGive(g_mutex);
+    }
 
     vTaskDelay(pdMS_TO_TICKS(100));
   }
@@ -264,7 +299,7 @@ void taskHeartbeat(void* parameter)
   while (true)
   {
     state = !state;
-    digitalWrite(HEARTBEAT_PIN, state ? HIGH : LOW);
+    digitalWrite(g_hardware.heartbeatPin, state ? HIGH : LOW);
     vTaskDelay(pdMS_TO_TICKS(500));
   }
 }
@@ -292,12 +327,13 @@ void publishDiscovery()
     "\"device\":{"
     "\"identifiers\":[\"esp32kit\"],"
     "\"name\":\"ESP32 HA Kit\","
-    "\"model\":\"ESP-WROOM-32\","
+    "\"model\":\"" + String(ESP.getChipModel()) + "\","
     "\"manufacturer\":\"Espressif Systems\","
     "\"sw_version\":\"1.0.0\""
     "}";
 
-  // Temperatura
+  // Temperatura si umiditate
+  if (g_hardware.dhtPin != PIN_DISABLED)
   {
     String cfg = "{\"name\":\"Temperatura\","
                  "\"device_class\":\"temperature\","
@@ -307,21 +343,24 @@ void publishDiscovery()
                  "\"unique_id\":\"esp32kit_temperature\","
                  + dev + "}";
     mqttClient.publish(DISC_TEMP, cfg.c_str(), true);
-  }
 
-  // Umiditate
-  {
-    String cfg = "{\"name\":\"Umiditate\","
-                 "\"device_class\":\"humidity\","
-                 "\"unit_of_measurement\":\"%\","
-                 "\"state_topic\":\"" + String(TOPIC_STATE) + "\","
-                 "\"value_template\":\"{{ value_json.humidity | round(1) }}\","
-                 "\"unique_id\":\"esp32kit_humidity\","
-                 + dev + "}";
+    cfg = "{\"name\":\"Umiditate\","
+          "\"device_class\":\"humidity\","
+          "\"unit_of_measurement\":\"%\","
+          "\"state_topic\":\"" + String(TOPIC_STATE) + "\","
+          "\"value_template\":\"{{ value_json.humidity | round(1) }}\","
+          "\"unique_id\":\"esp32kit_humidity\","
+          + dev + "}";
     mqttClient.publish(DISC_HUM, cfg.c_str(), true);
+  }
+  else
+  {
+    mqttClient.publish(DISC_TEMP, "", true);
+    mqttClient.publish(DISC_HUM, "", true);
   }
 
   // Senzor PIR miscare
+  if (g_hardware.pirPin != PIN_DISABLED)
   {
     String cfg = "{\"name\":\"Miscare\","
                  "\"device_class\":\"motion\","
@@ -333,8 +372,13 @@ void publishDiscovery()
                  + dev + "}";
     mqttClient.publish(DISC_MOTION, cfg.c_str(), true);
   }
+  else
+  {
+    mqttClient.publish(DISC_MOTION, "", true);
+  }
 
   // Releu switch
+  if (g_hardware.relayPin != PIN_DISABLED)
   {
     String cfg = "{\"name\":\"Releu\","
                  "\"state_topic\":\"" + String(TOPIC_RELAY_STATE) + "\","
@@ -345,15 +389,19 @@ void publishDiscovery()
                  + dev + "}";
     mqttClient.publish(DISC_RELAY, cfg.c_str(), true);
   }
+  else
+  {
+    mqttClient.publish(DISC_RELAY, "", true);
+  }
 
   g_discoveryPublished = true;
-  Serial.println("[MQTT] Home Assistant discovery publicat");
+  serialLog.println("[MQTT] Home Assistant discovery publicat");
 }
 
 bool mqttReconnect()
 {
   mqttClient.setServer(g_mqttBroker.c_str(), g_mqttPort);
-  Serial.printf("[MQTT] Conectare la %s:%d ...\n", g_mqttBroker.c_str(), g_mqttPort);
+  serialLog.printf("[MQTT] Conectare la %s:%d ...\n", g_mqttBroker.c_str(), g_mqttPort);
 
   bool ok = (g_mqttUser.length() > 0)
     ? mqttClient.connect(g_mqttClientId.c_str(), g_mqttUser.c_str(), g_mqttPass.c_str())
@@ -361,14 +409,14 @@ bool mqttReconnect()
 
   if (ok)
   {
-    Serial.println("[MQTT] Conectat!");
+    serialLog.println("[MQTT] Conectat!");
     mqttClient.subscribe(TOPIC_RELAY_CMD);
     g_mqttConnected      = true;
     g_discoveryPublished = false;   // re-publica discovery dupa reconectare
   }
   else
   {
-    Serial.printf("[MQTT] Esuat (rc=%d) broker=%s:%d\n", mqttClient.state(), g_mqttBroker.c_str(), g_mqttPort);
+    serialLog.printf("[MQTT] Esuat (rc=%d) broker=%s:%d\n", mqttClient.state(), g_mqttBroker.c_str(), g_mqttPort);
     g_mqttConnected = false;
   }
   return ok;
@@ -403,12 +451,12 @@ void publishState()
   float temp, hum;
   bool  motion, relay;
 
-  portENTER_CRITICAL(&g_mux);
+  xSemaphoreTake(g_mutex, portMAX_DELAY);
   temp   = g_temperature;
   hum    = g_humidity;
   motion = g_motionDetected;
   relay  = g_relayActive;
-  portEXIT_CRITICAL(&g_mux);
+  xSemaphoreGive(g_mutex);
 
   String json = "{";
   json += "\"temperature\":";
@@ -440,12 +488,12 @@ void handleData(WebServer& server)
   float temp, hum;
   bool  motion, relay;
 
-  portENTER_CRITICAL(&g_mux);
+  xSemaphoreTake(g_mutex, portMAX_DELAY);
   temp   = g_temperature;
   hum    = g_humidity;
   motion = g_motionDetected;
   relay  = g_relayActive;
-  portEXIT_CRITICAL(&g_mux);
+  xSemaphoreGive(g_mutex);
 
   String json = "{";
   json += "\"temperature\":";
@@ -465,8 +513,40 @@ void handleData(WebServer& server)
   server.send(200, "application/json", json);
 }
 
+void handleSerialLog(WebServer& server)
+{
+  uint32_t requestedSequence = 0;
+  if (server.hasArg("since"))
+    requestedSequence = static_cast<uint32_t>(strtoul(server.arg("since").c_str(), nullptr, 10));
+
+  uint32_t firstSequence;
+  uint32_t nextSequence;
+  bool dataWasDropped;
+  String logData = serialLog.readSince(requestedSequence, firstSequence,
+                                       nextSequence, dataWasDropped);
+
+  server.sendHeader("Cache-Control", "no-store");
+  server.sendHeader("X-Log-Start", String(firstSequence));
+  server.sendHeader("X-Log-Next", String(nextSequence));
+  server.sendHeader("X-Log-Dropped", dataWasDropped ? "1" : "0");
+  server.send(200, "text/plain; charset=utf-8", logData);
+}
+
+void handleSerialLogClear(WebServer& server)
+{
+  serialLog.clear();
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
 void handleApiRelay(WebServer& server)
 {
+  if (g_hardware.relayPin == PIN_DISABLED)
+  {
+    server.send(409, "application/json", "{\"error\":\"releul nu este configurat\"}");
+    return;
+  }
+
   if (!server.hasArg("state"))
   {
     server.send(400, "application/json", "{\"error\":\"missing state argument\"}");
@@ -524,12 +604,12 @@ void handleApiStatus(WebServer& server)
   float temp, hum;
   bool  motion, relay;
 
-  portENTER_CRITICAL(&g_mux);
+  xSemaphoreTake(g_mutex, portMAX_DELAY);
   temp   = g_temperature;
   hum    = g_humidity;
   motion = g_motionDetected;
   relay  = g_relayActive;
-  portEXIT_CRITICAL(&g_mux);
+  xSemaphoreGive(g_mutex);
 
   String json = "{";
   json += "\"device\":\"esp32-ha-kit\",";
@@ -573,7 +653,8 @@ void handleBoardInfo(WebServer& server)
   }
 
   String json = "{";
-  json += "\"chip_model\":\"ESP32\",";
+  json += "\"chip_model\":\"" + String(ESP.getChipModel()) + "\",";
+  json += "\"build_profile\":\"" + String(buildProfileName()) + "\",";
   json += "\"chip_revision\":" + String(chip_info.revision) + ",";
   json += "\"cpu_cores\":" + String(chip_info.cores) + ",";
   json += "\"cpu_freq\":" + String(ESP.getCpuFreqMHz()) + ",";
@@ -593,43 +674,195 @@ void handleBoardInfo(WebServer& server)
   server.send(200, "application/json", json);
 }
 
+int parsePinArgument(WebServer& server, const char* name, bool& ok)
+{
+  if (!server.hasArg(name))
+  {
+    ok = false;
+    return PIN_DISABLED;
+  }
+
+  String value = server.arg(name);
+  value.trim();
+  if (value == "-1")
+  {
+    ok = true;
+    return PIN_DISABLED;
+  }
+
+  if (value.length() == 0)
+  {
+    ok = false;
+    return PIN_DISABLED;
+  }
+
+  for (size_t i = 0; i < value.length(); ++i)
+  {
+    if (!isDigit(value[i]))
+    {
+      ok = false;
+      return PIN_DISABLED;
+    }
+  }
+
+  long pin = value.toInt();
+  ok = pin >= 0 && pin <= 127;
+  return static_cast<int>(pin);
+}
+
+void scheduleRestart()
+{
+  g_restartAt = millis() + 1500;
+}
+
+void handleHardwareConfigGet(WebServer& server)
+{
+  String json = hardwareConfigToJson(g_hardware);
+  json.remove(json.length() - 1);
+  json += F(",\"pins\":");
+  json += gpioInventoryToJson(g_hardware);
+  json += '}';
+  server.send(200, "application/json", json);
+}
+
+void handleHardwareConfigPost(WebServer& server)
+{
+  bool ok = true;
+  HardwareConfig config = g_hardware;
+  config.dhtPin = parsePinArgument(server, "dht_pin", ok);
+  if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"dht_pin invalid\"}"); return; }
+  config.pirPin = parsePinArgument(server, "pir_pin", ok);
+  if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"pir_pin invalid\"}"); return; }
+  config.relayPin = parsePinArgument(server, "relay_pin", ok);
+  if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"relay_pin invalid\"}"); return; }
+  config.heartbeatPin = parsePinArgument(server, "heartbeat_pin", ok);
+  if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"heartbeat_pin invalid\"}"); return; }
+  config.sdaPin = parsePinArgument(server, "sda_pin", ok);
+  if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"sda_pin invalid\"}"); return; }
+  config.sclPin = parsePinArgument(server, "scl_pin", ok);
+  if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"scl_pin invalid\"}"); return; }
+
+  config.relayActiveLow = !server.hasArg("relay_active_low") ||
+                          server.arg("relay_active_low") == "1" ||
+                          server.arg("relay_active_low") == "true";
+
+  int oledAddress = server.hasArg("oled_address") ? server.arg("oled_address").toInt() : 0x3C;
+  config.oledAddress = static_cast<uint8_t>(oledAddress);
+
+  String error;
+  if (!validateHardwareConfig(config, error))
+  {
+    String response = F("{\"ok\":false,\"error\":\"");
+    response += error;
+    response += F("\"}");
+    server.send(400, "application/json", response);
+    return;
+  }
+
+  if (!hardwareStore.save(config))
+  {
+    server.send(500, "application/json", "{\"ok\":false,\"error\":\"scrierea in NVS a esuat\"}");
+    return;
+  }
+
+  server.send(200, "application/json",
+              "{\"ok\":true,\"message\":\"Configuratia a fost salvata. Dispozitivul reporneste.\"}");
+  scheduleRestart();
+}
+
+void handleHardwareConfigReset(WebServer& server)
+{
+  hardwareStore.clear();
+  server.send(200, "application/json",
+              "{\"ok\":true,\"message\":\"Profilul implicit a fost restaurat. Dispozitivul reporneste.\"}");
+  scheduleRestart();
+}
+
 // ============================================================
 //  setup() & loop()
 // ============================================================
 void setup()
 {
-  Serial.begin(115200);
-  delay(300);
-  Serial.println("\n=== ESP32 MQTT Home Assistant DIY Kit ===");
+  // Creeaza mutex-ul inainte de orice altceva (inclusiv task-uri)
+  g_mutex = xSemaphoreCreateMutex();
 
-  // Configurare pini
-  pinMode(PIR_PIN,       INPUT);
-  pinMode(RELAY_PIN,     OUTPUT);
-  pinMode(HEARTBEAT_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN,     HIGH);   // SSR OFF la pornire (Low-Level: HIGH = OFF)
-  digitalWrite(HEARTBEAT_PIN, LOW);
+  Serial.begin(115200);
+  serialLog.begin();
+  delay(300);
+  serialLog.println("\n=== ESP32 MQTT Home Assistant DIY Kit ===");
+
+  g_hardware = hardwareStore.load();
+  serialLog.println("[HW] Target: " + String(targetName()) + " / profil: " + buildProfileName());
+
+  if (g_hardware.pirPin != PIN_DISABLED)
+    pinMode(g_hardware.pirPin, INPUT);
+
+  if (g_hardware.relayPin != PIN_DISABLED)
+  {
+    pinMode(g_hardware.relayPin, OUTPUT);
+    const uint8_t activeLevel = g_hardware.relayActiveLow ? LOW : HIGH;
+    digitalWrite(g_hardware.relayPin, !activeLevel);
+  }
+
+  if (g_hardware.heartbeatPin != PIN_DISABLED)
+  {
+    pinMode(g_hardware.heartbeatPin, OUTPUT);
+    digitalWrite(g_hardware.heartbeatPin, LOW);
+  }
 
   // DHT11
-  dht.begin();
-  Serial.println("[DHT11] Initializat pe GPIO" + String(DHT_PIN));
-
-  // OLED SSD1306 (I2C pe core 1 - nu folositi Wire din alt task!)
-  Wire.begin();
-  if (!oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR))
+  if (g_hardware.dhtPin != PIN_DISABLED)
   {
-    Serial.println("[OLED] EROARE init! Verifica cablajul si adresa I2C (0x3C/0x3D).");
+    dht = new DHT(g_hardware.dhtPin, DHT_TYPE);
+    dht->begin();
+    serialLog.println("[DHT11] Initializat pe GPIO" + String(g_hardware.dhtPin));
   }
   else
   {
-    oled.clearDisplay();
-    oled.setTextSize(1);
-    oled.setTextColor(SSD1306_WHITE);
-    oled.setCursor(16, 20);
-    oled.print(F("ESP32 HA Kit"));
-    oled.setCursor(10, 35);
-    oled.print(F("Initializing..."));
-    oled.display();
-    Serial.println("[OLED] Initializat (0x3C, SDA=GPIO21, SCL=GPIO22)");
+    serialLog.println("[DHT11] Dezactivat");
+  }
+
+  // OLED SSD1306 (Wire este folosit doar din loop)
+  if (g_hardware.sdaPin != PIN_DISABLED && g_hardware.sclPin != PIN_DISABLED)
+  {
+    Wire.setTimeOut(25);
+    bool wireReady = Wire.begin(g_hardware.sdaPin, g_hardware.sclPin, OLED_I2C_FREQ);
+    if (!wireReady)
+    {
+      disableOled(F("initializarea magistralei I2C a esuat"));
+    }
+    else if (!isI2cDevicePresent(g_hardware.oledAddress))
+    {
+      disableOled(F("adresa configurata nu raspunde; verifica SDA, SCL si 0x3C/0x3D"));
+    }
+    else
+    {
+      // Wire a fost deja initializat cu pinii configurati; periphBegin=false.
+      g_oledReady = oled.begin(SSD1306_SWITCHCAPVCC, g_hardware.oledAddress,
+                               true, false);
+    }
+
+    if (!g_oledReady && !g_oledFailureReported)
+    {
+      disableOled(F("initializarea controlerului SSD1306 a esuat"));
+    }
+    else if (g_oledReady)
+    {
+      oled.clearDisplay();
+      oled.setTextSize(1);
+      oled.setTextColor(SSD1306_WHITE);
+      oled.setCursor(16, 20);
+      oled.print(F("ESP32 HA Kit"));
+      oled.setCursor(10, 35);
+      oled.print(F("Initializing..."));
+      oled.display();
+      serialLog.printf("[OLED] Initializat (0x%02X, SDA=GPIO%d, SCL=GPIO%d)\n",
+                       g_hardware.oledAddress, g_hardware.sdaPin, g_hardware.sclPin);
+    }
+  }
+  else
+  {
+    serialLog.println("[OLED] Dezactivat");
   }
 
   // WiFiWebManager
@@ -640,9 +873,14 @@ void setup()
   wifiManager.on("/data",                HTTP_GET,  handleData);
   wifiManager.on("/api/status",          HTTP_GET,  handleApiStatus);
   wifiManager.on("/api/relay",           HTTP_GET,  handleApiRelay);
+  wifiManager.on("/api/serial_log",      HTTP_GET,  handleSerialLog);
+  wifiManager.on("/api/serial_log/clear",HTTP_POST, handleSerialLogClear);
   wifiManager.on("/api/board_info",      HTTP_GET,  handleBoardInfo);
   wifiManager.on("/api/mqtt_config",     HTTP_GET,  handleMqttConfigGet);
   wifiManager.on("/api/mqtt_config",     HTTP_POST, handleMqttConfigPost);
+  wifiManager.on("/api/hardware_config", HTTP_GET,  handleHardwareConfigGet);
+  wifiManager.on("/api/hardware_config", HTTP_POST, handleHardwareConfigPost);
+  wifiManager.on("/api/hardware_reset",  HTTP_POST, handleHardwareConfigReset);
 
   // Incarca si aplica configuratia MQTT din NVS
   loadMqttConfig();
@@ -650,15 +888,18 @@ void setup()
   mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(512);
 
-  // FreeRTOS tasks (core 0 - lasa loop/WiFi/MQTT pe core 1)
-  xTaskCreatePinnedToCore(taskSensors,   "taskSensors",   4096, nullptr, 2, nullptr, 0);
-  xTaskCreatePinnedToCore(taskHeartbeat, "taskHeartbeat", 1024, nullptr, 1, nullptr, 0);
+  // xTaskCreate este portabil pe tintele single-core si dual-core.
+  xTaskCreate(taskSensors, "taskSensors", 4096, nullptr, 2, nullptr);
+  if (g_hardware.heartbeatPin != PIN_DISABLED)
+    xTaskCreate(taskHeartbeat, "taskHeartbeat", 1024, nullptr, 1, nullptr);
 
-  Serial.println("[WiFi] AP: ESP32_HAKit  /  Parola: 12345678");
-  Serial.println("[Web]  http://" + wifiManager.getIPAddress());
-  Serial.println("[MQTT] Broker: " + g_mqttBroker + ":" + String(g_mqttPort));
-  Serial.println("[Pini] DHT11=GPIO4  PIR=GPIO32  Releu=GPIO23  SDA=GPIO21  SCL=GPIO22");
-  Serial.println("=========================================\n");
+  serialLog.println("[WiFi] AP: ESP32_HAKit  /  Parola: 12345678");
+  serialLog.println("[Web]  http://" + wifiManager.getIPAddress());
+  serialLog.println("[MQTT] Broker: " + g_mqttBroker + ":" + String(g_mqttPort));
+  serialLog.printf("[Pini] DHT=%d PIR=%d Releu=%d LED=%d SDA=%d SCL=%d\n",
+                   g_hardware.dhtPin, g_hardware.pirPin, g_hardware.relayPin,
+                   g_hardware.heartbeatPin, g_hardware.sdaPin, g_hardware.sclPin);
+  serialLog.println("=========================================\n");
 }
 
 void loop()
@@ -666,12 +907,17 @@ void loop()
   wifiManager.handleClient();
   handleMqtt();
 
+  if (g_restartAt != 0 && static_cast<long>(millis() - g_restartAt) >= 0)
+  {
+    ESP.restart();
+  }
+
   // Detectie schimbare stare PIR → publish imediat
   static bool lastMotion = false;
   bool currentMotion;
-  portENTER_CRITICAL(&g_mux);
+  xSemaphoreTake(g_mutex, portMAX_DELAY);
   currentMotion = g_motionDetected;
-  portEXIT_CRITICAL(&g_mux);
+  xSemaphoreGive(g_mutex);
 
   if (currentMotion != lastMotion)
   {
@@ -684,7 +930,7 @@ void loop()
   if (millis() - lastOled >= 500)
   {
     lastOled = millis();
-    oledDrawStatus();
+    if (g_oledReady) oledDrawStatus();
   }
 
   // Publish MQTT periodic la 30 secunde
@@ -703,27 +949,25 @@ void loop()
 
     float temp, hum;
     bool  motion, relay;
-    portENTER_CRITICAL(&g_mux);
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
     temp   = g_temperature;
     hum    = g_humidity;
     motion = g_motionDetected;
     relay  = g_relayActive;
-    portEXIT_CRITICAL(&g_mux);
+    xSemaphoreGive(g_mutex);
 
-    Serial.println("--- Status ---");
+    serialLog.println("--- Status ---");
     if (!isnan(temp))
-      Serial.printf("  Temperatura: %.1f C  Umiditate: %.1f%%\n", temp, hum);
+      serialLog.printf("  Temperatura: %.1f C  Umiditate: %.1f%%\n", temp, hum);
     else
-      Serial.println("  DHT11: citire invalida (verifica cablaj GPIO4)");
-    Serial.printf("  Miscare PIR: %s | Releu: %s\n",
-                  motion ? "DETECTATA" : "Nu",
-                  relay  ? "ON" : "OFF");
-    Serial.printf("  WiFi: %s | MQTT: %s\n",
-                  wifiManager.isConnected()
-                    ? ("STA " + wifiManager.getIPAddress()).c_str()
-                    : "AP mode",
-                  g_mqttConnected ? "Conectat" : "Deconectat");
+      serialLog.println("  DHT11: dezactivat sau citire invalida");
+    serialLog.printf("  Miscare PIR: %s | Releu: %s\n",
+                     motion ? "DETECTATA" : "Nu",
+                     relay  ? "ON" : "OFF");
+    serialLog.printf("  WiFi: %s | MQTT: %s\n",
+                     wifiManager.isConnected()
+                       ? ("STA " + wifiManager.getIPAddress()).c_str()
+                       : "AP mode",
+                     g_mqttConnected ? "Conectat" : "Deconectat");
   }
 }
-
-

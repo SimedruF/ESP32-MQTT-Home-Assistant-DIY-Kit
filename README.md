@@ -14,6 +14,7 @@ Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și 
 - [Instalare și configurare](#instalare-și-configurare)
 - [Interfața web](#interfața-web)
 - [MQTT și Home Assistant](#mqtt-și-home-assistant)
+- [Firmware ESPHome alternativ](#firmware-esphome-alternativ)
 - [Structura proiectului](#structura-proiectului)
 - [Build și upload](#build-și-upload)
 - [Depanare](#depanare)
@@ -27,10 +28,14 @@ Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și 
 - **Releu SSR** — control ON/OFF din interfața web sau prin MQTT
 - **Display OLED 0.96"** — afișare status complet (temp, umiditate, mișcare, releu, WiFi, MQTT)
 - **MQTT Auto-Discovery** — entitățile apar automat în Home Assistant fără configurare manuală
-- **Dashboard web** — 4 tab-uri: monitorizare, configurare MQTT, configurare WiFi, informații board
+- **Dashboard web** — monitorizare, configurare MQTT/WiFi/hardware și informații despre placă
 - **Configurare WiFi din browser** — fără a rescrie firmware-ul
 - **Configurare MQTT din browser** — broker/port/user/parolă salvate în memorie NVS
-- **FreeRTOS** — citire senzori pe core 0, WiFi/MQTT/OLED pe core 1
+- **Configurare hardware din browser** — GPIO pentru fiecare periferic, salvate în NVS
+- **Multi-board** — profile PlatformIO pentru ESP32-WROOM-32, ESP32-C3, ESP32-C6 și ESP32-S3
+- **Inventar GPIO** — pini liberi, ocupați, doar-input, rezervați și pini de boot/USB
+- **Pinout vizual** — desen simplificat al plăcii, cu ordinea pinilor și evidențierea funcțiilor selectate
+- **FreeRTOS portabil** — funcționează pe variante ESP32 single-core și dual-core
 - **Heartbeat LED** — indicator vizual că firmware-ul rulează
 
 ---
@@ -39,7 +44,7 @@ Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și 
 
 | Componentă | Specificații | Cantitate |
 |---|---|---|
-| ESP32 | ESP-WROOM-32, 30 pini, USB Type-C, CH340 | 1 |
+| ESP32 | WROOM-32, C3-DevKitM-1, C6-DevKitC-1 sau S3-DevKitC-1 | 1 |
 | Senzor DHT11 | Modul KY-015 cu rezistență pull-up inclusă | 1 |
 | Senzor PIR | HC-SR501 | 1 |
 | Releu SSR | Low-level trigger 5V (LOW = ON) | 1 |
@@ -97,6 +102,18 @@ Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și 
 | GPIO18 | Anod (+) prin 220Ω |
 | GND | Catod (-) |
 
+Valorile de mai sus sunt profilul implicit `esp32-wroom`. Pentru celelalte medii:
+
+| Mediu PlatformIO | DHT | PIR | Releu | Heartbeat | SDA | SCL |
+|---|---:|---:|---:|---:|---:|---:|
+| `esp32-wroom` | 4 | 32 | 23 | 18 | 21 | 22 |
+| `esp32-c3` | 4 | 3 | 7 | 10 | 6 | 5 |
+| `esp32-c6` | 2 | 3 | 7 | 18 | 6 | 10 |
+| `esp32-s3` | 4 | 5 | 7 | 18 | 8 | 9 |
+
+Pinii pot fi schimbați ulterior din tab-ul **Hardware**. Valoarea `-1`, afișată în interfață ca
+**Dezactivat / neconfigurat**, oprește perifericul respectiv.
+
 ---
 
 ## Instalare și configurare
@@ -113,12 +130,21 @@ Deschide folderul în **VS Code** cu extensia **PlatformIO IDE** instalată.
 ### Pas 2 — Build și upload firmware
 
 ```bash
-# Build
-~/.platformio/penv/bin/python3.12 ~/.platformio/penv/bin/pio run
+# ESP32-WROOM-32
+pio run -e esp32-wroom -t upload
 
-# Upload (asigură-te că ESP32 este conectat pe /dev/ttyUSB0)
-~/.platformio/penv/bin/python3.12 ~/.platformio/penv/bin/pio run --target upload
+# ESP32-C3-DevKitM-1
+pio run -e esp32-c3 -t upload
+
+# ESP32-C6-DevKitC-1
+pio run -e esp32-c6 -t upload
+
+# ESP32-S3-DevKitC-1-N8
+pio run -e esp32-s3 -t upload
 ```
+
+Profilul `esp32-s3` este pentru varianta N8 fără PSRAM. La modulele S3 cu memorie
+Octal, GPIO35, GPIO36 și GPIO37 sunt folosiți intern și nu trebuie conectați la periferice.
 
 Sau folosește butoanele **Build** / **Upload** din bara PlatformIO în VS Code.
 
@@ -154,7 +180,8 @@ Accesează `http://<IP_ESP32>` din browser:
 | **Dashboard** | Monitorizare live: temperatură, umiditate, mișcare, releu; control ON/OFF releu |
 | **MQTT** | Configurare broker, port, autentificare; status conexiune |
 | **WiFi** | Schimbare rețea WiFi; ștergere credențiale |
-| **Board Info** | Informații tehnice: chip, frecvență, memorie, MAC, uptime |
+| **Hardware** | Configurare GPIO, pinout vizual, polaritate releu, adresă OLED și inventar pini |
+| **Board Info** | Informații tehnice: chip, profil build, frecvență, memorie, MAC, uptime |
 
 Date actualizate automat la **2 secunde** fără reîncărcare pagină.
 
@@ -191,14 +218,78 @@ Date actualizate automat la **2 secunde** fără reîncărcare pagină.
 
 ---
 
+## Firmware ESPHome alternativ
+
+Directorul `esphome/` conține un firmware ESPHome separat pentru aceleași componente:
+DHT11, PIR, releu activ LOW, OLED SSD1306 și LED heartbeat. Integrarea cu Home
+Assistant se face implicit prin ESPHome Native API, fără broker MQTT.
+
+> Instalarea ESPHome înlocuiește firmware-ul PlatformIO existent pe placă. Cele două
+> variante rămân disponibile în proiect, dar nu pot rula simultan pe același ESP32.
+
+Profile disponibile:
+
+| Profil script | Placă |
+|---|---|
+| `wroom` | ESP32-WROOM-32 / ESP32 Dev Module |
+| `c3` | ESP32-C3-DevKitM-1 |
+| `c6` | ESP32-C6-DevKitC-1 |
+| `s3` | ESP32-S3-DevKitC-1 |
+
+Setup inițial:
+
+```bash
+cd esphome
+./setup.sh init
+```
+
+Scriptul detectează automat Python 3.11 sau mai nou, creează mediul local
+`esphome/.venv`, instalează versiunea ESPHome din `requirements.txt`, solicită
+datele WiFi și generează cheile API/OTA în `secrets.yaml`. Fișierul cu secrete
+este exclus din Git. Build-urile sunt păstrate în
+`~/.cache/esp32-ha-kit-esphome`, deoarece ESP-IDF nu acceptă spații în calea
+directorului de compilare.
+
+Comenzi uzuale:
+
+```bash
+# Validează toate profilele
+./setup.sh check all
+
+# Compilează un profil
+./setup.sh compile wroom
+
+# Prima instalare prin USB
+./setup.sh run wroom /dev/ttyUSB0
+./setup.sh run s3 /dev/ttyACM0
+
+# Update OTA și loguri după prima instalare
+./setup.sh upload c3 esp32-ha-kit-c3.local
+./setup.sh logs c3 esp32-ha-kit-c3.local
+```
+
+Lista completă de comenzi este disponibilă cu `./setup.sh --help`.
+
+---
+
 ## Structura proiectului
 
 ```
 ESP32 MQTT Home Assistant DIY Kit/
 ├── src/
-│   └── main.cpp                 # Logica principală: senzori, MQTT, FreeRTOS, OLED
+│   ├── main.cpp                 # Logica principală: senzori, MQTT, FreeRTOS, OLED
+│   └── HardwareConfig.cpp       # Profiluri GPIO, validare și persistență NVS
 ├── include/
-│   └── WebPages.h               # Dashboard HTML embedded (4 tab-uri)
+│   ├── WebPages.h               # Dashboard HTML embedded
+│   └── HardwareConfig.h         # Modelul configurației hardware
+├── scripts/
+│   └── select_s3_port.py        # Selectează numai porturi USB seriale reale pentru S3
+├── esphome/
+│   ├── common.yaml              # Componente și integrare Home Assistant comune
+│   ├── esp32-ha-kit-*.yaml      # Profile WROOM, C3, C6 și S3
+│   ├── secrets.example.yaml     # Model pentru credențiale și chei
+│   ├── requirements.txt         # Versiunea ESPHome utilizată
+│   └── setup.sh                 # Setup, validare, build, upload și loguri
 ├── lib/
 │   └── WiFiWebManager/          # Biblioteca custom: WiFi AP/STA + WebServer
 │       ├── WiFiWebManager.h
@@ -233,14 +324,17 @@ ESP32 MQTT Home Assistant DIY Kit/
 ### Comenzi utile
 
 ```bash
-# Build
-~/.platformio/penv/bin/python3.12 ~/.platformio/penv/bin/pio run
+# Build profil implicit (ESP32-WROOM-32)
+pio run
 
-# Upload
-~/.platformio/penv/bin/python3.12 ~/.platformio/penv/bin/pio run --target upload
+# Build toate profilele
+pio run -e esp32-wroom -e esp32-c3 -e esp32-c6 -e esp32-s3
+
+# Upload profil selectat
+pio run -e esp32-c3 -t upload
 
 # Monitor serial (115200 baud)
-~/.platformio/penv/bin/python3.12 ~/.platformio/penv/bin/pio device monitor
+pio device monitor -b 115200
 
 # Generare PDF ghid client
 bash generate_pdf_advanced.sh Ghid_Configurare_Client.html -o Ghid_Configurare_Client.pdf
@@ -255,9 +349,12 @@ bash generate_pdf_advanced.sh Ghid_Configurare_Client.html -o Ghid_Configurare_C
 | `DHT11: citire invalida` | Cablaj GPIO4 sau tensiune incorectă | Verifică firul DATA pe GPIO4, VCC = 3.3V |
 | `MQTT rc=-2` | Brokerul MQTT nu este accesibil | Setează IP-ul corect în tab-ul MQTT |
 | OLED nu afișează nimic | Adresă I2C greșită sau cablaj | Verifică SDA=GPIO21, SCL=GPIO22, VCC=3.3V |
+| Mesaje repetate `i2cWrite ESP_ERR_INVALID_STATE` | Magistrala I2C/OLED nu răspunde sau frecvența este schimbată în timpul transferurilor | Firmware-ul fixează I2C la 400 kHz și oprește refresh-ul OLED după primul probe eșuat; verifică și pinii/adresa din tab-ul Hardware |
+| S3 nu are port de upload | Placa nu este enumerată prin USB | Scriptul selectează automat un port existent `/dev/ttyACM*` sau `/dev/ttyUSB*` și refuză `/dev/ttyS*`; folosește un cablu de date, conectare directă fără hub și verifică `pio device list` |
 | PIR detectează mereu mișcare | Sensibilitate prea ridicată | Reglează potențiometrul de sensibilitate al HC-SR501 |
 | Nu apare AP `ESP32_HAKit` | Credențiale WiFi salvate anterior | Apasă reset sau șterge NVS prin tab WiFi → Șterge credențiale |
 | Entitățile nu apar în HA | MQTT Auto-Discovery dezactivat | Activează din HA: Setări → Dispozitive → MQTT → Activează Auto-Discovery |
+| Configurația GPIO este respinsă | Pin inexistent, rezervat, neexpus sau folosit de două funcții | Consultă inventarul din tab-ul Hardware și selectează alt GPIO |
 
 ---
 
