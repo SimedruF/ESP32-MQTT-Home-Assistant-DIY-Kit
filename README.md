@@ -159,7 +159,9 @@ Conectează-te la acest AP și accesează `http://192.168.4.1` → tab **WiFi** 
 
 ### Pas 4 — Configurare MQTT
 
-După conectarea la WiFi, accesează dashboard-ul ESP32 în browser (IP-ul afișat pe OLED sau în Serial Monitor).
+După conectarea la WiFi, accesează dashboard-ul la `http://esp32-ha-kit.local`.
+Ca alternativă, folosește IP-ul afișat pe OLED, în Serial Monitor sau în lista
+de clienți DHCP a routerului, unde placa apare cu hostname-ul `esp32-ha-kit`.
 
 Mergi la tab-ul **MQTT** și completează:
 - **Broker IP** — adresa IP a serverului MQTT (ex: IP-ul Home Assistant)
@@ -283,7 +285,7 @@ ESP32 MQTT Home Assistant DIY Kit/
 │   ├── WebPages.h               # Dashboard HTML embedded
 │   └── HardwareConfig.h         # Modelul configurației hardware
 ├── scripts/
-│   └── select_s3_port.py        # Selectează numai porturi USB seriale reale pentru S3
+│   └── select_esp_usb_port.py   # Selectează și verifică porturile USB pentru C3/S3
 ├── esphome/
 │   ├── common.yaml              # Componente și integrare Home Assistant comune
 │   ├── esp32-ha-kit-*.yaml      # Profile WROOM, C3, C6 și S3
@@ -295,8 +297,10 @@ ESP32 MQTT Home Assistant DIY Kit/
 │       ├── WiFiWebManager.h
 │       └── WiFiWebManager.cpp
 ├── platformio.ini               # Configurare build PlatformIO
-├── Ghid_Configurare_Client.html # Ghid HTML pentru client (printabil)
+├── Ghid_Configurare_Client.html # Ghid client în română (printabil)
+├── Client_Configuration_Guide.html # Client guide in English (printable)
 ├── Ghid_Configurare_Client.pdf  # Ghid PDF generat
+├── Client_Configuration_Guide.pdf # English client guide PDF
 └── generate_pdf_advanced.sh     # Script generare PDF din HTML
 ```
 
@@ -338,11 +342,28 @@ pio device monitor -b 115200
 
 # Generare PDF ghid client
 bash generate_pdf_advanced.sh Ghid_Configurare_Client.html -o Ghid_Configurare_Client.pdf
+
+# Generare PDF ghid client în engleză
+bash generate_pdf_advanced.sh Client_Configuration_Guide.html -o Client_Configuration_Guide.pdf
 ```
 
 ---
 
 ## Depanare
+
+### Acces fără Serial Monitor
+
+1. Încearcă `http://esp32-ha-kit.local` de pe un dispozitiv conectat la aceeași rețea.
+2. Dacă placa nu s-a conectat la router, conectează-te la WiFi-ul `ESP32_HAKit`
+   cu parola `12345678`, apoi deschide `http://192.168.4.1`.
+3. În lista DHCP a routerului caută hostname-ul `esp32-ha-kit`.
+4. Pentru ESP32-C3 și ESP32-S3, verifică porturile cu `pio device list`; placa
+   poate apărea ca `/dev/ttyUSB0` printr-un bridge USB-to-UART sau ca
+   `/dev/ttyACM0` prin USB nativ. Profilele C3/S3 preferă
+   `/dev/serial/by-id/*`, iar scriptul verifică tipul cipului înainte de upload.
+5. Pentru USB Serial/JTAG nativ pe ESP32-C3 sunt necesare împreună
+   `ARDUINO_USB_MODE=1` și `ARDUINO_USB_CDC_ON_BOOT=1`. Activarea numai a
+   `ARDUINO_USB_CDC_ON_BOOT` produce eroarea de build `USBSerial was not declared`.
 
 | Problemă | Cauză probabilă | Soluție |
 |---|---|---|
@@ -355,6 +376,7 @@ bash generate_pdf_advanced.sh Ghid_Configurare_Client.html -o Ghid_Configurare_C
 | Nu apare AP `ESP32_HAKit` | Credențiale WiFi salvate anterior | Apasă reset sau șterge NVS prin tab WiFi → Șterge credențiale |
 | Entitățile nu apar în HA | MQTT Auto-Discovery dezactivat | Activează din HA: Setări → Dispozitive → MQTT → Activează Auto-Discovery |
 | Configurația GPIO este respinsă | Pin inexistent, rezervat, neexpus sau folosit de două funcții | Consultă inventarul din tab-ul Hardware și selectează alt GPIO |
+| C3: `USBSerial was not declared` | CDC activat fără modul USB Serial/JTAG | Păstrează împreună `-DARDUINO_USB_MODE=1` și `-DARDUINO_USB_CDC_ON_BOOT=1` în profilul `esp32-c3` |
 
 ---
 

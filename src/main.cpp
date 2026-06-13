@@ -21,6 +21,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <WiFiWebManager.h>
 #include <WebPages.h>
 #include <HardwareConfig.h>
@@ -32,6 +33,7 @@
 #include <Preferences.h>
 #include <esp_chip_info.h>
 #include <esp_system.h>
+#include <soc/soc_caps.h>
 #include <SerialLog.h>
 
 #define DHT_TYPE        DHT11
@@ -64,10 +66,42 @@ static const char* DISC_RELAY  = "homeassistant/switch/esp32kit/relay/config";
 
 // NVS pentru setarile MQTT
 Preferences mqttPrefs;
+Preferences uiPrefs;
+String g_uiLanguage = "ro";
+
+void loadUiConfig()
+{
+  if (!uiPrefs.begin("ui", false))
+  {
+    serialLog.println("[UI] NVS indisponibil; se foloseste limba romana");
+    return;
+  }
+  g_uiLanguage = uiPrefs.getString("language", "ro");
+  if (g_uiLanguage != "ro" && g_uiLanguage != "en")
+    g_uiLanguage = "ro";
+  uiPrefs.end();
+  serialLog.println("[UI] Limba interfetei: " + g_uiLanguage);
+}
+
+bool saveUiLanguage(const String& language)
+{
+  if (language != "ro" && language != "en") return false;
+  if (!uiPrefs.begin("ui", false)) return false;
+  const bool saved = uiPrefs.putString("language", language) > 0;
+  uiPrefs.end();
+  if (saved) g_uiLanguage = language;
+  return saved;
+}
 
 void loadMqttConfig()
 {
-  mqttPrefs.begin("mqtt", true);
+  // Read-write creates the namespace on first boot. Opening a missing namespace
+  // read-only makes Preferences emit ESP_ERR_NVS_NOT_FOUND even though defaults work.
+  if (!mqttPrefs.begin("mqtt", false))
+  {
+    serialLog.println("[MQTT] NVS indisponibil; se foloseste configuratia implicita");
+    return;
+  }
   g_mqttBroker   = mqttPrefs.getString("broker",   g_mqttBroker);
   g_mqttPort     = mqttPrefs.getInt(   "port",     g_mqttPort);
   g_mqttUser     = mqttPrefs.getString("user",     g_mqttUser);
@@ -83,7 +117,11 @@ void saveMqttConfig(const String& broker, int port,
                     const String& user,   const String& pass,
                     const String& clientId)
 {
-  mqttPrefs.begin("mqtt", false);
+  if (!mqttPrefs.begin("mqtt", false))
+  {
+    serialLog.println("[MQTT] Eroare la deschiderea NVS pentru scriere");
+    return;
+  }
   mqttPrefs.putString("broker",    broker);
   mqttPrefs.putInt(   "port",      port);
   mqttPrefs.putString("user",      user);
@@ -114,13 +152,27 @@ HardwareConfig      g_hardware;
 
 static bool g_oledReady = false;
 static bool g_oledFailureReported = false;
+static bool g_mdnsReady = false;
 static unsigned long g_restartAt = 0;
+
+#if defined(RGB_BUILTIN)
+static constexpr bool RGB_LED_SUPPORTED = true;
+#else
+static constexpr bool RGB_LED_SUPPORTED = false;
+#endif
+
+static bool g_rgbLedOn = false;
+static uint8_t g_rgbLedRed = 0;
+static uint8_t g_rgbLedGreen = 128;
+static uint8_t g_rgbLedBlue = 255;
+static uint8_t g_rgbLedBrightness = 25;
 
 // ============================================================
 //  Variabile partajate (protejate de mutex intre task-uri)
 // ============================================================
 volatile float g_temperature    = NAN;
 volatile float g_humidity       = NAN;
+volatile bool  g_dhtPresent     = false;
 volatile bool  g_motionDetected = false;
 volatile bool  g_relayActive    = false;
 
@@ -148,6 +200,54 @@ void setRelay(bool active)
 
   if (mqttClient.connected())
     mqttClient.publish(TOPIC_RELAY_STATE, active ? "ON" : "OFF", /*retain=*/true);
+}
+
+// ============================================================
+//  Control LED RGB onboard
+// ============================================================
+void applyRgbLed()
+{
+#if defined(RGB_BUILTIN)
+  if (!g_rgbLedOn)
+  {
+    rgbLedWrite(RGB_BUILTIN, 0, 0, 0);
+    return;
+  }
+
+  const uint8_t red = static_cast<uint8_t>(
+    (static_cast<uint16_t>(g_rgbLedRed) * g_rgbLedBrightness) / 100);
+  const uint8_t green = static_cast<uint8_t>(
+    (static_cast<uint16_t>(g_rgbLedGreen) * g_rgbLedBrightness) / 100);
+  const uint8_t blue = static_cast<uint8_t>(
+    (static_cast<uint16_t>(g_rgbLedBlue) * g_rgbLedBrightness) / 100);
+  rgbLedWrite(RGB_BUILTIN, red, green, blue);
+#endif
+}
+
+String rgbLedStateJson()
+{
+  String json;
+  json.reserve(120);
+  json = F("{\"supported\":");
+  json += RGB_LED_SUPPORTED ? F("true") : F("false");
+  json += F(",\"on\":");
+  json += g_rgbLedOn ? F("true") : F("false");
+  json += F(",\"red\":");
+  json += g_rgbLedRed;
+  json += F(",\"green\":");
+  json += g_rgbLedGreen;
+  json += F(",\"blue\":");
+  json += g_rgbLedBlue;
+  json += F(",\"brightness\":");
+  json += g_rgbLedBrightness;
+#if defined(PIN_RGB_LED)
+  json += F(",\"pin\":");
+  json += PIN_RGB_LED;
+#else
+  json += F(",\"pin\":-1");
+#endif
+  json += '}';
+  return json;
 }
 
 // ============================================================
@@ -257,6 +357,7 @@ void taskSensors(void* parameter)
   (void)parameter;
 
   unsigned long lastDhtRead = 0;
+  uint8_t consecutiveDhtFailures = 0;
 
   while (true)
   {
@@ -271,9 +372,19 @@ void taskSensors(void* parameter)
 
       if (!isnan(t) && !isnan(h))
       {
+        consecutiveDhtFailures = 0;
         xSemaphoreTake(g_mutex, portMAX_DELAY);
         g_temperature = t;
         g_humidity    = h;
+        g_dhtPresent  = true;
+        xSemaphoreGive(g_mutex);
+      }
+      else if (++consecutiveDhtFailures >= 3)
+      {
+        xSemaphoreTake(g_mutex, portMAX_DELAY);
+        g_temperature = NAN;
+        g_humidity    = NAN;
+        g_dhtPresent  = false;
         xSemaphoreGive(g_mutex);
       }
     }
@@ -483,20 +594,57 @@ void handleRoot(WebServer& server)
   server.send_P(200, "text/html", htmlPage);
 }
 
+void handleUiConfigGet(WebServer& server)
+{
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json",
+              String(F("{\"language\":\"")) + g_uiLanguage + F("\"}"));
+}
+
+void handleUiConfigPost(WebServer& server)
+{
+  const String language = server.arg("language");
+  if (language != "ro" && language != "en")
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"language must be ro or en\"}");
+    return;
+  }
+  if (!saveUiLanguage(language))
+  {
+    server.send(500, "application/json",
+                "{\"ok\":false,\"error\":\"failed to save language\"}");
+    return;
+  }
+  server.send(200, "application/json",
+              String(F("{\"ok\":true,\"language\":\"")) + g_uiLanguage + F("\"}"));
+}
+
 void handleData(WebServer& server)
 {
   float temp, hum;
-  bool  motion, relay;
+  bool  dhtPresent, motion, relay;
 
   xSemaphoreTake(g_mutex, portMAX_DELAY);
-  temp   = g_temperature;
-  hum    = g_humidity;
-  motion = g_motionDetected;
-  relay  = g_relayActive;
+  temp       = g_temperature;
+  hum        = g_humidity;
+  dhtPresent = g_dhtPresent;
+  motion     = g_motionDetected;
+  relay      = g_relayActive;
   xSemaphoreGive(g_mutex);
 
   String json = "{";
-  json += "\"temperature\":";
+  json += "\"dht_available\":";
+  json += dhtPresent ? "true" : "false";
+  json += ",\"pir_available\":";
+  json += g_hardware.pirPin != PIN_DISABLED ? "true" : "false";
+  json += ",\"relay_available\":";
+  json += g_hardware.relayPin != PIN_DISABLED ? "true" : "false";
+  json += ",\"oled_available\":";
+  json += g_oledReady ? "true" : "false";
+  json += ",\"heartbeat_available\":";
+  json += g_hardware.heartbeatPin != PIN_DISABLED ? "true" : "false";
+  json += ",\"temperature\":";
   json += isnan(temp) ? "null" : String(temp, 1);
   json += ",\"humidity\":";
   json += isnan(hum)  ? "null" : String(hum, 1);
@@ -556,6 +704,66 @@ void handleApiRelay(WebServer& server)
   bool   newState = (s == "1" || s == "ON" || s == "on");
   setRelay(newState);
   server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleApiRgbLedGet(WebServer& server)
+{
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", rgbLedStateJson());
+}
+
+void handleApiRgbLedPost(WebServer& server)
+{
+  if (!RGB_LED_SUPPORTED)
+  {
+    server.send(409, "application/json",
+                "{\"ok\":false,\"error\":\"placa nu expune un LED RGB onboard\"}");
+    return;
+  }
+
+  if (server.hasArg("red") && server.hasArg("green") && server.hasArg("blue"))
+  {
+    const long red = server.arg("red").toInt();
+    const long green = server.arg("green").toInt();
+    const long blue = server.arg("blue").toInt();
+    if (red < 0 || red > 255 || green < 0 || green > 255 || blue < 0 || blue > 255)
+    {
+      server.send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"valorile RGB trebuie sa fie intre 0 si 255\"}");
+      return;
+    }
+    g_rgbLedRed = static_cast<uint8_t>(red);
+    g_rgbLedGreen = static_cast<uint8_t>(green);
+    g_rgbLedBlue = static_cast<uint8_t>(blue);
+  }
+
+  if (server.hasArg("brightness"))
+  {
+    const long brightness = server.arg("brightness").toInt();
+    if (brightness < 0 || brightness > 100)
+    {
+      server.send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"luminozitatea trebuie sa fie intre 0 si 100\"}");
+      return;
+    }
+    g_rgbLedBrightness = static_cast<uint8_t>(brightness);
+  }
+
+  if (server.hasArg("state"))
+  {
+    const String state = server.arg("state");
+    g_rgbLedOn = state == "1" || state == "ON" || state == "on" || state == "true";
+  }
+
+  applyRgbLed();
+  serialLog.printf("[RGB] %s #%02X%02X%02X, luminozitate %u%%\n",
+                   g_rgbLedOn ? "ON" : "OFF",
+                   g_rgbLedRed, g_rgbLedGreen, g_rgbLedBlue, g_rgbLedBrightness);
+
+  String json = F("{\"ok\":true,\"led\":");
+  json += rgbLedStateJson();
+  json += '}';
+  server.send(200, "application/json", json);
 }
 
 // GET /api/mqtt_config  → returneaza configuratia curenta (fara parola)
@@ -636,6 +844,26 @@ void handleBoardInfo(WebServer& server)
   esp_chip_info_t chip_info;
   esp_chip_info(&chip_info);
 
+#if defined(SOC_WIFI_SUPPORTED) && SOC_WIFI_SUPPORTED
+  const bool wifiCapable = true;
+#else
+  const bool wifiCapable = false;
+#endif
+
+#if defined(SOC_IEEE802154_SUPPORTED) && SOC_IEEE802154_SUPPORTED
+  const bool ieee802154Capable = true;
+#else
+  const bool ieee802154Capable = false;
+#endif
+
+#if defined(ZIGBEE_MODE_ED)
+  const char* zigbeeFirmwareMode = "End Device";
+#elif defined(ZIGBEE_MODE_ZCZR)
+  const char* zigbeeFirmwareMode = "Coordinator / Router";
+#else
+  const char* zigbeeFirmwareMode = "Inactiv in firmware-ul curent";
+#endif
+
   // Use WiFi MAC (already available, no extra header needed)
   String macStr = WiFi.macAddress();
 
@@ -658,6 +886,22 @@ void handleBoardInfo(WebServer& server)
   json += "\"chip_revision\":" + String(chip_info.revision) + ",";
   json += "\"cpu_cores\":" + String(chip_info.cores) + ",";
   json += "\"cpu_freq\":" + String(ESP.getCpuFreqMHz()) + ",";
+  json += "\"wifi_capable\":";
+  json += wifiCapable ? "true" : "false";
+  json += ",\"ieee802154_capable\":";
+  json += ieee802154Capable ? "true" : "false";
+  json += ",\"zigbee_capable\":";
+  json += ieee802154Capable ? "true" : "false";
+  json += ",\"zigbee_firmware_mode\":\"" + String(zigbeeFirmwareMode) + "\",";
+  json += "\"thread_capable\":";
+  json += ieee802154Capable ? "true" : "false";
+  json += ",\"matter_capable\":";
+  json += (wifiCapable || ieee802154Capable) ? "true" : "false";
+  json += ",\"matter_wifi_capable\":";
+  json += wifiCapable ? "true" : "false";
+  json += ",\"matter_thread_capable\":";
+  json += ieee802154Capable ? "true" : "false";
+  json += ",";
   json += "\"flash_size\":" + String(ESP.getFlashChipSize()) + ",";
   json += "\"psram_size\":" + String(ESP.getPsramSize()) + ",";
   json += "\"free_heap\":" + String(ESP.getFreeHeap()) + ",";
@@ -791,8 +1035,16 @@ void setup()
   delay(300);
   serialLog.println("\n=== ESP32 MQTT Home Assistant DIY Kit ===");
 
+  loadUiConfig();
   g_hardware = hardwareStore.load();
   serialLog.println("[HW] Target: " + String(targetName()) + " / profil: " + buildProfileName());
+
+  applyRgbLed();
+#if defined(PIN_RGB_LED)
+  serialLog.printf("[RGB] LED onboard disponibil pe GPIO%d\n", PIN_RGB_LED);
+#else
+  serialLog.println("[RGB] LED onboard indisponibil pentru acest profil");
+#endif
 
   if (g_hardware.pirPin != PIN_DISABLED)
     pinMode(g_hardware.pirPin, INPUT);
@@ -868,11 +1120,27 @@ void setup()
   // WiFiWebManager
   wifiManager.begin();
 
+  // Pastreaza dashboard-ul accesibil chiar daca DHCP schimba adresa IP.
+  g_mdnsReady = MDNS.begin("esp32-ha-kit");
+  if (g_mdnsReady)
+  {
+    MDNS.addService("http", "tcp", 80);
+    serialLog.println("[mDNS] http://esp32-ha-kit.local");
+  }
+  else
+  {
+    serialLog.println("[mDNS] Initializarea a esuat; foloseste adresa IP");
+  }
+
   // Rute web
   wifiManager.on("/",                    HTTP_GET,  handleRoot);
+  wifiManager.on("/api/ui_config",       HTTP_GET,  handleUiConfigGet);
+  wifiManager.on("/api/ui_config",       HTTP_POST, handleUiConfigPost);
   wifiManager.on("/data",                HTTP_GET,  handleData);
   wifiManager.on("/api/status",          HTTP_GET,  handleApiStatus);
   wifiManager.on("/api/relay",           HTTP_GET,  handleApiRelay);
+  wifiManager.on("/api/rgb_led",         HTTP_GET,  handleApiRgbLedGet);
+  wifiManager.on("/api/rgb_led",         HTTP_POST, handleApiRgbLedPost);
   wifiManager.on("/api/serial_log",      HTTP_GET,  handleSerialLog);
   wifiManager.on("/api/serial_log/clear",HTTP_POST, handleSerialLogClear);
   wifiManager.on("/api/board_info",      HTTP_GET,  handleBoardInfo);
@@ -895,6 +1163,8 @@ void setup()
 
   serialLog.println("[WiFi] AP: ESP32_HAKit  /  Parola: 12345678");
   serialLog.println("[Web]  http://" + wifiManager.getIPAddress());
+  if (g_mdnsReady)
+    serialLog.println("[Web]  http://esp32-ha-kit.local");
   serialLog.println("[MQTT] Broker: " + g_mqttBroker + ":" + String(g_mqttPort));
   serialLog.printf("[Pini] DHT=%d PIR=%d Releu=%d LED=%d SDA=%d SCL=%d\n",
                    g_hardware.dhtPin, g_hardware.pirPin, g_hardware.relayPin,

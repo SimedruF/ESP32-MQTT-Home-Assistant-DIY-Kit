@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Client Configuration Guide - ESP32 HA Kit WROOM / C3 / C6 / S3</title>
+<style>
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:#eef2f7;color:#1e293b;line-height:1.65}
+  a{color:#1d4ed8}
+  .header{background:linear-gradient(135deg,#172554,#1d4ed8 65%,#0891b2);color:#fff;padding:42px 20px 34px;text-align:center}
+  .header h1{margin:0 0 8px;font-size:2.15rem}
+  .header p{margin:0 auto;max-width:760px;opacity:.92}
+  .language{margin-top:18px}
+  .language a{display:inline-block;padding:7px 13px;border:1px solid rgba(255,255,255,.6);border-radius:999px;color:#fff;text-decoration:none;font-weight:700}
+  .language .active{background:#fff;color:#1e40af}
+  .page{max-width:980px;margin:0 auto;padding:28px 16px 56px}
+  .toc,.intro,.section{background:#fff;border-radius:14px;box-shadow:0 3px 16px rgba(15,23,42,.08);margin-bottom:24px}
+  .intro,.toc{padding:22px 26px}
+  .intro{border-left:5px solid #2563eb}
+  .intro h2,.toc h2{margin:0 0 10px;color:#1e40af}
+  .toc-links{display:flex;flex-wrap:wrap;gap:8px}
+  .toc a{background:#eff6ff;border-radius:8px;padding:6px 10px;text-decoration:none;font-size:.9rem}
+  .section{overflow:hidden}
+  .section-head{display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,#1e40af,#2563eb);color:#fff;padding:18px 24px}
+  .section-head h2{margin:0;font-size:1.25rem}
+  .num{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.2);font-weight:800;flex:0 0 auto}
+  .section-body{padding:22px 26px}
+  .boards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:16px 0}
+  .board{border:1px solid #dbeafe;border-radius:12px;padding:16px;background:#f8fafc}
+  .board h3{margin:0 0 8px;color:#1e40af}
+  .badge{display:inline-block;padding:3px 9px;border-radius:999px;background:#dbeafe;color:#1e40af;font-size:.78rem;font-weight:700;margin:2px}
+  .badge.green{background:#dcfce7;color:#166534}
+  .badge.amber{background:#fef3c7;color:#92400e}
+  .steps{list-style:none;padding:0;margin:0}
+  .steps li{position:relative;padding:0 0 18px 42px}
+  .steps li:last-child{padding-bottom:0}
+  .steps li::before{content:counter(list-item);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#dbeafe;color:#1e40af;font-weight:800}
+  .checklist{list-style:none;padding:0}
+  .checklist li{padding:4px 0 4px 28px;position:relative}
+  .checklist li::before{content:"\2713";position:absolute;left:0;color:#16a34a;font-weight:900}
+  .box{border-radius:9px;padding:13px 16px;margin:15px 0;font-size:.93rem}
+  .box strong{display:block;margin-bottom:3px}
+  .info{background:#eff6ff;border-left:4px solid #3b82f6;color:#1e3a8a}
+  .warn{background:#fffbeb;border-left:4px solid #f59e0b;color:#78350f}
+  .ok{background:#f0fdf4;border-left:4px solid #22c55e;color:#166534}
+  code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;padding:2px 6px;color:#be123c;font-family:Consolas,'Courier New',monospace}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.9rem}
+  th{background:#1e40af;color:#fff;text-align:left;padding:10px}
+  td{padding:9px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+  tr:nth-child(even) td{background:#f8fafc}
+  .table-wrap{overflow-x:auto}
+  .footer{text-align:center;color:#64748b;font-size:.85rem;padding:18px}
+  @media(max-width:650px){
+    .header h1{font-size:1.55rem}
+    .section-body{padding:18px 15px}
+    .section-head{padding:16px}
+  }
+  @media print{
+    @page{size:A4;margin:12mm}
+    body{background:#fff}
+    .page{max-width:none;padding:0}
+    .toc,.language{display:none}
+    .section,.intro{box-shadow:none;border:1px solid #dbeafe;break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>ESP32 MQTT Home Assistant DIY Kit</h1>
+  <p>Installation and configuration guide for ESP32-WROOM-32, ESP32-C3, ESP32-C6 and ESP32-S3</p>
+  <div class="language">
+    <a href="Ghid_Configurare_Client.html">Română</a>
+    <a class="active" href="Client_Configuration_Guide.html">English</a>
+  </div>
+</header>
+
+<main class="page">
+  <section class="intro">
+    <h2>About this guide</h2>
+    <p>The kit uses a programmed ESP32 board with Wi-Fi connectivity, an embedded web dashboard and Home Assistant integration through MQTT. The firmware supports several board families and displays only peripherals that are detected or enabled in the hardware configuration.</p>
+    <div class="box info">
+      <strong>Dashboard language</strong>
+      The current firmware dashboard is in Romanian. This guide includes the exact Romanian button label in parentheses whenever it is needed.
+    </div>
+    <div>
+      <span class="badge">ESP32-WROOM-32</span>
+      <span class="badge">ESP32-C3</span>
+      <span class="badge">ESP32-C6</span>
+      <span class="badge">ESP32-S3</span>
+      <span class="badge green">2.4 GHz Wi-Fi</span>
+      <span class="badge green">MQTT Discovery</span>
+      <span class="badge amber">Browser configuration</span>
+    </div>
+  </section>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <div class="toc-links">
+      <a href="#boards">Supported boards</a>
+      <a href="#requirements">Requirements</a>
+      <a href="#startup">First startup</a>
+      <a href="#wifi">Wi-Fi and IP</a>
+      <a href="#mqtt">MQTT</a>
+      <a href="#hardware">Hardware and pins</a>
+      <a href="#dashboard">Dashboard</a>
+      <a href="#ha">Home Assistant</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+    </div>
+  </nav>
+
+  <section class="section" id="boards">
+    <div class="section-head"><div class="num">1</div><h2>Identify the ESP32 board</h2></div>
+    <div class="section-body">
+      <p>The model is usually printed on the metal module or on the back of the development board. The firmware profile must match the supplied board.</p>
+      <div class="boards">
+        <article class="board">
+          <h3>ESP32-WROOM-32 / ESP32 Dev Module</h3>
+          <p>Dual-core Xtensa LX6 processor with 2.4 GHz Wi-Fi, Bluetooth Classic and Bluetooth LE. It is the mature general-purpose profile for sensors and automation.</p>
+          <p><strong>Onboard LED:</strong> depends on the DevKit board; the firmware defaults to an external heartbeat LED on GPIO18.</p>
+        </article>
+        <article class="board">
+          <h3>ESP32-C3-DevKitM-1</h3>
+          <p>Single-core RISC-V processor with Wi-Fi and Bluetooth LE 5. Suitable for compact sensors and automation nodes.</p>
+          <p><strong>Onboard RGB LED:</strong> GPIO8.</p>
+        </article>
+        <article class="board">
+          <h3>ESP32-C6-DevKitC-1</h3>
+          <p>RISC-V processor with Wi-Fi 6, Bluetooth LE 5 and an IEEE 802.15.4 radio.</p>
+          <p><strong>Onboard RGB LED:</strong> GPIO8.</p>
+        </article>
+        <article class="board">
+          <h3>ESP32-S3-DevKitC-1</h3>
+          <p>Dual-core Xtensa LX7 processor with native USB and vector instructions for AI/DSP workloads.</p>
+          <p><strong>Onboard RGB LED:</strong> GPIO48 on the initial revision or GPIO38 on v1.1. The dashboard reports the pin used by the firmware.</p>
+        </article>
+      </div>
+      <div class="box warn">
+        <strong>Available hardware capabilities not enabled by this firmware</strong>
+        ESP32-C6 can run Zigbee/Thread, while C6 and S3 can be used for Matter. This kit firmware uses MQTT over Wi-Fi; Zigbee, Thread and Matter require different firmware.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="requirements">
+    <div class="section-head"><div class="num">2</div><h2>Installation requirements</h2></div>
+    <div class="section-body">
+      <ul class="checklist">
+        <li>A router providing a <strong>2.4 GHz Wi-Fi</strong> network.</li>
+        <li>A phone, tablet or computer with a web browser.</li>
+        <li>A 5 V USB power source rated for at least 500 mA and a compatible power/data cable.</li>
+        <li>A working Home Assistant installation if MQTT integration is required.</li>
+        <li>Mosquitto Broker and the MQTT integration enabled in Home Assistant.</li>
+      </ul>
+      <div class="box info">
+        <strong>The USB connector may differ</strong>
+        Depending on the board and revision, the connector can be USB-C or Micro-USB. WROOM boards commonly use a CP210x or CH340 USB-to-UART bridge, while some S3 boards provide separate USB-to-UART and native USB ports.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="startup">
+    <div class="section-head"><div class="num">3</div><h2>First startup</h2></div>
+    <div class="section-body">
+      <ol class="steps">
+        <li>Power the board through the appropriate USB port.</li>
+        <li>Wait approximately 10-15 seconds for firmware initialization.</li>
+        <li>If no Wi-Fi credentials are stored, the board creates the <code>ESP32_HAKit</code> network.</li>
+        <li>Connect your phone or computer using password <code>12345678</code>.</li>
+        <li>Open <code>http://192.168.4.1</code> in a browser.</li>
+      </ol>
+      <div class="box ok">
+        <strong>Access Point mode</strong>
+        SSID: <code>ESP32_HAKit</code> &nbsp; Password: <code>12345678</code> &nbsp; Address: <code>192.168.4.1</code>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="wifi">
+    <div class="section-head"><div class="num">4</div><h2>Configure Wi-Fi and find the IP address</h2></div>
+    <div class="section-body">
+      <ol class="steps">
+        <li>Open the <strong>WiFi</strong> tab in the ESP32 dashboard.</li>
+        <li>Enter the home network name and password.</li>
+        <li>Press <strong>Save and connect</strong> (<code>Salveaza si conecteaza</code>).</li>
+        <li>Reconnect your phone or computer to the home network.</li>
+        <li>Open the dashboard using one of the methods below.</li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Method</th><th>Address or action</th></tr>
+          <tr><td>Local hostname</td><td><code>http://esp32-ha-kit.local</code></td></tr>
+          <tr><td>Router</td><td>Find the <code>esp32-ha-kit</code> client in the DHCP list.</td></tr>
+          <tr><td>OLED</td><td>The IP is displayed when an OLED is connected and enabled.</td></tr>
+          <tr><td>Serial log</td><td>At 115200 baud, look for the <code>IP Address:</code> line.</td></tr>
+        </table>
+      </div>
+      <div class="box warn">
+        <strong>Unsupported network</strong>
+        These boards use 2.4 GHz Wi-Fi. If a combined 2.4/5 GHz SSID causes connection problems, temporarily create a separate 2.4 GHz network name.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="mqtt">
+    <div class="section-head"><div class="num">5</div><h2>Configure MQTT</h2></div>
+    <div class="section-body">
+      <ol class="steps">
+        <li>Open the board dashboard and select the <strong>MQTT</strong> tab.</li>
+        <li>Enter the broker address, port and authentication details.</li>
+        <li>Use a unique Client ID when installing multiple kits.</li>
+        <li>Press <strong>Save and apply</strong> (<code>Salveaza si aplica</code>).</li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Field</th><th>Example</th></tr>
+          <tr><td>Broker</td><td><code>192.168.1.50</code> - Home Assistant/Mosquitto IP</td></tr>
+          <tr><td>Port</td><td><code>1883</code></td></tr>
+          <tr><td>Client ID</td><td><code>esp32-ha-kit</code> or a unique name</td></tr>
+          <tr><td>Username / password</td><td>Credentials accepted by the MQTT broker</td></tr>
+        </table>
+      </div>
+      <div class="box ok">
+        The status bar turns green and displays <strong>MQTT: Connected</strong> after successful authentication.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="hardware">
+    <div class="section-head"><div class="num">6</div><h2>Configure components and pins</h2></div>
+    <div class="section-body">
+      <p>Open the <strong>Hardware</strong> tab. Select the correct pin for each installed component. Set components that are not connected to <strong>Disabled / not configured</strong> (<code>Dezactivat / neconfigurat</code>).</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Profile</th><th>DHT</th><th>PIR</th><th>Relay</th><th>Heartbeat</th><th>SDA</th><th>SCL</th><th>Onboard RGB</th></tr>
+          <tr><td>ESP32-WROOM-32</td><td>4</td><td>32</td><td>23</td><td>18</td><td>21</td><td>22</td><td>&mdash;</td></tr>
+          <tr><td>ESP32-C3</td><td>4</td><td>3</td><td>7</td><td>10</td><td>6</td><td>5</td><td>8</td></tr>
+          <tr><td>ESP32-C6</td><td>2</td><td>3</td><td>7</td><td>18</td><td>6</td><td>10</td><td>8</td></tr>
+          <tr><td>ESP32-S3</td><td>4</td><td>5</td><td>7</td><td>18</td><td>8</td><td>9</td><td>48/38*</td></tr>
+        </table>
+      </div>
+      <p><small>ESP32-WROOM-32 does not guarantee an addressable onboard RGB LED. * The S3 RGB pin depends on the board revision. Do not manually assign the RGB pin reserved by the firmware.</small></p>
+      <div class="box info">
+        <strong>How are components detected?</strong>
+        DHT11 is shown after valid readings and the OLED after a successful I2C response. PIR sensors and relays cannot be reliably identified electrically; they are shown when enabled in the Hardware tab.
+      </div>
+      <div class="box warn">
+        <strong>Power levels</strong>
+        Use 3.3 V for the DHT11 and OLED. Many HC-SR501 and relay modules use a 5 V supply, but signals connected to the ESP32 must remain compatible with 3.3 V logic. Always check the supplied module.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="dashboard">
+    <div class="section-head"><div class="num">7</div><h2>Use the embedded web dashboard</h2></div>
+    <div class="section-body">
+      <div class="table-wrap">
+        <table>
+          <tr><th>Tab</th><th>Function</th></tr>
+          <tr><td>Dashboard</td><td>Shows detected or enabled components only; controls the relay and onboard RGB LED.</td></tr>
+          <tr><td>MQTT</td><td>Broker settings and connection status.</td></tr>
+          <tr><td>WiFi</td><td>Change or delete the stored network.</td></tr>
+          <tr><td>Hardware</td><td>Enable/disable components, select GPIOs and inspect the board pinout.</td></tr>
+          <tr><td>Serial Log</td><td>A copy of the board's internal log, available directly in the browser.</td></tr>
+          <tr><td>Board Info (<code>Info Placa</code>)</td><td>Model, firmware profile, memory, MAC address, uptime and capabilities.</td></tr>
+        </table>
+      </div>
+      <div class="box info">
+        <strong>Interface language</strong>
+        Use the selector at the top of the page to choose Romanian or English. The selection is stored in the board's NVS memory and applies to every client opening the dashboard.
+      </div>
+      <div class="box info">
+        <strong>Onboard RGB LED</strong>
+        Color, brightness and ON/OFF controls are available without external wiring on profiles that declare an RGB LED. The WROOM profile does not show this card unless the board declares a compatible RGB LED.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="ha">
+    <div class="section-head"><div class="num">8</div><h2>Verify Home Assistant</h2></div>
+    <div class="section-body">
+      <ol class="steps">
+        <li>In Home Assistant, open <strong>Settings &rarr; Devices &amp; services &rarr; MQTT</strong>.</li>
+        <li>Find the <strong>ESP32 HA Kit</strong> device.</li>
+        <li>Entities are published for peripherals enabled in the hardware configuration.</li>
+        <li>Add the entities to a dashboard and create the required automations.</li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Enabled peripheral</th><th>Home Assistant entity</th></tr>
+          <tr><td>DHT11</td><td>Temperature and humidity</td></tr>
+          <tr><td>PIR</td><td>Motion binary sensor</td></tr>
+          <tr><td>Relay</td><td>ON/OFF switch</td></tr>
+        </table>
+      </div>
+      <p>The onboard RGB LED is currently controlled from the ESP32 dashboard and is not published as an MQTT entity.</p>
+    </div>
+  </section>
+
+  <section class="section" id="troubleshooting">
+    <div class="section-head"><div class="num">9</div><h2>Troubleshooting</h2></div>
+    <div class="section-body">
+      <div class="box warn"><strong>The ESP32_HAKit network is missing</strong>The board may already have a stored network. Check the router for <code>esp32-ha-kit</code> or clear credentials from the WiFi tab.</div>
+      <div class="box warn"><strong>192.168.4.1 does not open</strong>Connect to <code>ESP32_HAKit</code> and temporarily disable mobile data or VPN.</div>
+      <div class="box warn"><strong>MQTT remains disconnected</strong>Check the broker IP, port 1883, credentials, firewall and that both devices are on the same local network.</div>
+      <div class="box warn"><strong>A dashboard card is missing</strong>Check the Hardware tab. DHT and OLED must respond; PIR and relay must be explicitly enabled.</div>
+      <div class="box warn"><strong>The WROOM serial port is missing</strong>Use a USB data cable and install the driver for the board's USB-to-UART bridge, usually CP210x or CH340.</div>
+      <div class="box warn"><strong>The S3 serial port is missing</strong>Use a USB data cable and the correct port. Depending on the connection, the board may appear through native USB or a USB-to-UART bridge.</div>
+      <div class="box info">
+        <strong>Separate reset actions</strong>
+        Deleting data from the WiFi tab removes Wi-Fi credentials only. MQTT and GPIO settings are managed separately in the MQTT and Hardware tabs.
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">
+    ESP32 MQTT Home Assistant DIY Kit &bull; Client Guide EN &bull; Version 2.0 &bull; June 2026
+  </div>
+</main>
+</body>
+</html>

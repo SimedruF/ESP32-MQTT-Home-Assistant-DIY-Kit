@@ -9,6 +9,9 @@ WiFiWebManager::WiFiWebManager(const char* apSSID, const char* apPassword, int s
 
 bool WiFiWebManager::begin() {
     serialLog.println("\n=== WiFi Web Manager Initialization ===");
+
+    // Make the board easy to identify in the router's DHCP client list.
+    WiFi.setHostname("esp32-ha-kit");
     
     // Load saved credentials
     loadCredentials();
@@ -76,7 +79,10 @@ WebServer& WiFiWebManager::getServer() {
 }
 
 void WiFiWebManager::saveCredentials(const String& ssid, const String& password) {
-    _preferences.begin("wifi", false);
+    if (!_preferences.begin("wifi", false)) {
+        serialLog.println("Eroare NVS: credentialele WiFi nu au putut fi salvate");
+        return;
+    }
     _preferences.putString("ssid", ssid);
     _preferences.putString("password", password);
     _preferences.putBool("configured", true);
@@ -90,7 +96,10 @@ void WiFiWebManager::saveCredentials(const String& ssid, const String& password)
 }
 
 void WiFiWebManager::clearCredentials() {
-    _preferences.begin("wifi", false);
+    if (!_preferences.begin("wifi", false)) {
+        serialLog.println("Eroare NVS: credentialele WiFi nu au putut fi sterse");
+        return;
+    }
     _preferences.clear();
     _preferences.end();
     
@@ -115,7 +124,15 @@ void WiFiWebManager::restart() {
 // Private methods
 
 void WiFiWebManager::loadCredentials() {
-    _preferences.begin("wifi", true);
+    // A read-write open creates the namespace after flash erase/first boot.
+    // Read-only would log ESP_ERR_NVS_NOT_FOUND for a valid empty NVS.
+    if (!_preferences.begin("wifi", false)) {
+        _wifiConfigured = false;
+        _savedSSID = "";
+        _savedPassword = "";
+        serialLog.println("NVS indisponibil; nu pot incarca setarile WiFi");
+        return;
+    }
     _wifiConfigured = _preferences.getBool("configured", false);
     
     if (_wifiConfigured) {

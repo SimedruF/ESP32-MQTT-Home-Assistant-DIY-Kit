@@ -17,6 +17,8 @@ body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#1e293b
 .container{max-width:960px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);padding:28px}
 h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .subtitle{text-align:center;color:#64748b;font-size:.9em;margin-bottom:24px}
+.language-control{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:-12px 0 14px;color:#475569;font-size:.86em;font-weight:700}
+.language-control select{padding:6px 9px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;font-weight:700}
 /* Tabs */
 .tabs{display:flex;gap:8px;border-bottom:2px solid #e5e7eb;margin-bottom:24px}
 .tab-btn{padding:10px 22px;background:none;border:none;border-bottom:3px solid transparent;font-weight:600;color:#64748b;cursor:pointer;transition:all .25s;font-size:.95em}
@@ -48,6 +50,13 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .relay-btns{display:flex;gap:8px;margin-top:10px;justify-content:center}
 .relay-btns button{padding:7px 18px;border:2px solid rgba(255,255,255,.6);background:rgba(255,255,255,.15);color:#fff;border-radius:6px;font-weight:700;cursor:pointer;transition:background .2s}
 .relay-btns button:hover{background:rgba(255,255,255,.35)}
+/* RGB LED card */
+.card-rgb{display:none;background:linear-gradient(135deg,#0f172a,#334155)}
+.rgb-preview{width:58px;height:58px;border-radius:50%;margin:8px auto;border:3px solid rgba(255,255,255,.7);background:#000;box-shadow:0 0 18px rgba(255,255,255,.3)}
+.rgb-controls{display:grid;grid-template-columns:54px 1fr;gap:8px;align-items:center;margin-top:10px;text-align:left;font-size:.8em}
+.rgb-controls input[type=color]{width:54px;height:36px;padding:2px;border:2px solid rgba(255,255,255,.6);border-radius:6px;background:transparent;cursor:pointer}
+.rgb-controls input[type=range]{width:100%}
+.rgb-meta{font-size:.78em;opacity:.85;margin-top:7px}
 /* Info box */
 .info-box{background:#f0f9ff;border-left:4px solid #3b82f6;padding:14px 18px;border-radius:8px;font-size:.88em;color:#1e3a5f;line-height:1.8}
 .info-box ul{margin-left:18px}
@@ -76,6 +85,16 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .bi-mem{background:linear-gradient(135deg,#f093fb,#f5576c)}
 .bi-sys{background:linear-gradient(135deg,#4facfe,#00f2fe);color:#0c2340}
 .bi-sketch{background:linear-gradient(135deg,#fa709a,#fee140);color:#3b1a00}
+.bi-iot{background:linear-gradient(135deg,#0f766e,#0891b2)}
+.cap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.cap-card{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);border-radius:10px;padding:14px}
+.cap-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.cap-name{font-weight:700;font-size:1.05em}
+.cap-status{padding:4px 9px;border-radius:999px;font-size:.76em;font-weight:800}
+.cap-yes{background:#d1fae5;color:#065f46}
+.cap-no{background:#fee2e2;color:#991b1b}
+.cap-detail{font-size:.82em;line-height:1.45;opacity:.92}
+.cap-note{margin-top:12px;padding:10px 12px;border-radius:8px;background:rgba(15,23,42,.24);font-size:.82em;line-height:1.5}
 .bi-btn{padding:11px 28px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.95em;display:block;margin:0 auto 20px}
 /* Serial log */
 .serial-toolbar{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:12px}
@@ -117,6 +136,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
 @media(max-width:700px){
   body{padding:8px}.container{padding:16px}.tabs{overflow-x:auto}.tab-btn{padding:9px 12px;white-space:nowrap}
+  .language-control{justify-content:center;margin-top:-10px}
   .pinout-board{grid-template-columns:145px 135px 145px;gap:5px}.board-body{min-height:450px}
   .serial-status{width:100%;margin-left:0}.serial-terminal{height:360px}
 }
@@ -126,6 +146,13 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 <div class="container">
   <h1>&#127968; ESP32 HA Kit</h1>
   <p class="subtitle">MQTT &bull; Home Assistant &bull; DHT11 &bull; PIR &bull; Releu &bull; OLED</p>
+  <div class="language-control">
+    <label for="uiLanguage">Limba interfeței</label>
+    <select id="uiLanguage" onchange="saveUiLanguage(this.value)">
+      <option value="ro">Română</option>
+      <option value="en">English</option>
+    </select>
+  </div>
 
   <div class="tabs">
     <button class="tab-btn active" onclick="showTab('monitor',this)">&#128202; Dashboard</button>
@@ -142,21 +169,21 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 
     <div class="cards">
       <!-- Temperature -->
-      <div class="card card-temp">
+      <div class="card card-temp" id="tempCard" style="display:none">
         <div class="card-label">Temperatura</div>
         <div class="card-value" id="tempVal">--</div>
         <div class="card-unit">&deg;C &nbsp;|&nbsp; DHT11</div>
       </div>
 
       <!-- Humidity -->
-      <div class="card card-hum">
+      <div class="card card-hum" id="humCard" style="display:none">
         <div class="card-label">Umiditate</div>
         <div class="card-value" id="humVal">--</div>
         <div class="card-unit">% &nbsp;|&nbsp; DHT11</div>
       </div>
 
       <!-- Motion -->
-      <div class="card card-motion" id="motionCard">
+      <div class="card card-motion" id="motionCard" style="display:none">
         <div class="card-label">Senzor Miscare</div>
         <div class="motion-circle" id="motionCircle">&#10003;</div>
         <div id="motionText" style="font-size:1.1em;font-weight:700">Fara miscare</div>
@@ -164,7 +191,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
       </div>
 
       <!-- Relay -->
-      <div class="card card-relay">
+      <div class="card card-relay" id="relayCard" style="display:none">
         <div class="card-label">Releu SSR</div>
         <div class="relay-state" id="relayVal">OFF</div>
         <div style="font-size:.8em;opacity:.8;margin-bottom:6px"><span id="dashRelayPin">GPIO--</span> &bull; configurabil</div>
@@ -173,16 +200,33 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
           <button onclick="setRelay(0)">&#9898; OFF</button>
         </div>
       </div>
+
+      <!-- RGB LED onboard -->
+      <div class="card card-rgb" id="rgbCard">
+        <div class="card-label">LED RGB Onboard</div>
+        <div class="rgb-preview" id="rgbPreview"></div>
+        <div class="relay-state" id="rgbState">OFF</div>
+        <div class="rgb-controls">
+          <input type="color" id="rgbColor" value="#0080ff" aria-label="Culoare LED">
+          <input type="range" id="rgbBrightness" min="0" max="100" value="25" aria-label="Luminozitate LED">
+        </div>
+        <div class="rgb-meta"><span id="rgbHex">#0080FF</span> &bull; <span id="rgbBrightnessValue">25%</span> &bull; <span id="rgbPin">GPIO--</span></div>
+        <div class="relay-btns">
+          <button onclick="setRgbLed(1)">ON</button>
+          <button onclick="setRgbLed(0)">OFF</button>
+        </div>
+      </div>
     </div>
 
-    <div class="info-box">
+    <div class="info-box" id="hardwareInfo">
       <strong>&#128268; Cablaj hardware:</strong>
       <ul>
-        <li>DHT11 DATA &rarr; <span id="wireDht">neconfigurat</span> &nbsp;|&nbsp; VCC=3.3V, GND=GND</li>
-        <li>PIR HC-SR501 OUT &rarr; <span id="wirePir">neconfigurat</span></li>
-        <li>Releu SSR IN &rarr; <span id="wireRelay">neconfigurat</span></li>
-        <li>OLED SSD1306 SDA &rarr; <span id="wireSda">neconfigurat</span> &nbsp;|&nbsp; SCL &rarr; <span id="wireScl">neconfigurat</span></li>
-        <li>LED Heartbeat &rarr; <span id="wireHeartbeat">neconfigurat</span></li>
+        <li id="wireDhtRow" style="display:none">DHT11 DATA &rarr; <span id="wireDht">neconfigurat</span> &nbsp;|&nbsp; VCC=3.3V, GND=GND</li>
+        <li id="wirePirRow" style="display:none">PIR HC-SR501 OUT &rarr; <span id="wirePir">neconfigurat</span></li>
+        <li id="wireRelayRow" style="display:none">Releu SSR IN &rarr; <span id="wireRelay">neconfigurat</span></li>
+        <li id="wireOledRow" style="display:none">OLED SSD1306 SDA &rarr; <span id="wireSda">neconfigurat</span> &nbsp;|&nbsp; SCL &rarr; <span id="wireScl">neconfigurat</span></li>
+        <li id="wireHeartbeatRow" style="display:none">LED Heartbeat &rarr; <span id="wireHeartbeat">neconfigurat</span></li>
+        <li id="noExternalHardware">Niciun periferic extern detectat sau configurat.</li>
         <li>MQTT publish la fiecare 30s sau la detectie miscare</li>
       </ul>
     </div>
@@ -359,6 +403,36 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
           <div><div class="bi-item-label">Frecventa</div><div class="bi-item-value" id="biFreq">-</div></div>
         </div>
       </div>
+      <div class="bi-section bi-iot">
+        <div class="bi-title">&#128225; Capabilitati IoT</div>
+        <div class="cap-grid">
+          <div class="cap-card">
+            <div class="cap-head">
+              <span class="cap-name">Zigbee</span>
+              <span class="cap-status" id="biZigbeeStatus">-</span>
+            </div>
+            <div class="cap-detail" id="biZigbeeDetail">-</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-head">
+              <span class="cap-name">Thread</span>
+              <span class="cap-status" id="biThreadStatus">-</span>
+            </div>
+            <div class="cap-detail" id="biThreadDetail">-</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-head">
+              <span class="cap-name">Matter</span>
+              <span class="cap-status" id="biMatterStatus">-</span>
+            </div>
+            <div class="cap-detail" id="biMatterDetail">-</div>
+          </div>
+        </div>
+        <div class="cap-note">
+          Capabilitatea indica suportul placii si al platformei. Firmware-ul curent foloseste MQTT prin WiFi;
+          Zigbee, Thread sau Matter necesita un firmware configurat explicit pentru protocolul ales.
+        </div>
+      </div>
       <div class="bi-section bi-mem">
         <div class="bi-title">&#128190; Memorie</div>
         <div class="bi-grid">
@@ -392,6 +466,159 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 </div>
 
 <script>
+var currentLanguage = 'ro';
+var originalTextNodes = [];
+
+var englishText = {
+  'Limba interfeței':'Interface language',
+  'Română':'Romanian',
+  'MQTT • Home Assistant • DHT11 • PIR • Releu • OLED':'MQTT • Home Assistant • DHT11 • PIR • Relay • OLED',
+  'Info Placa':'Board Info',
+  'Temperatura':'Temperature',
+  'Umiditate':'Humidity',
+  'Senzor Miscare':'Motion Sensor',
+  'Fara miscare':'No motion',
+  'Releu SSR':'SSR Relay',
+  'Releu SSR IN':'SSR relay IN',
+  'configurabil':'configurable',
+  'Culoare LED':'LED color',
+  'Luminozitate LED':'LED brightness',
+  'Cablaj hardware:':'Hardware wiring:',
+  'neconfigurat':'not configured',
+  'Niciun periferic extern detectat sau configurat.':'No external peripheral detected or configured.',
+  'MQTT publish la fiecare 30s sau la detectie miscare':'MQTT publishes every 30s or when motion is detected',
+  'Configuratie broker MQTT':'MQTT broker configuration',
+  'Verificare status MQTT...':'Checking MQTT status...',
+  'Setarile sunt salvate in memoria flash a ESP32 si se aplica imediat dupa salvare. Home Assistant trebuie sa aiba un broker MQTT activ (ex. Mosquitto add-on).':'Settings are stored in ESP32 flash memory and applied immediately. Home Assistant must have an active MQTT broker, such as the Mosquitto add-on.',
+  'Adresa IP broker':'Broker IP address',
+  'Utilizator':'Username',
+  '(optional)':'(optional)',
+  'Parola':'Password',
+  'Parola nu este afisata dupa salvare din motive de securitate.':'The password is not displayed after saving for security reasons.',
+  'Salveaza si aplica':'Save and apply',
+  'Topice MQTT folosite:':'MQTT topics:',
+  'JSON: temperatura, umiditate, miscare, releu':'JSON: temperature, humidity, motion, relay',
+  'starea releului (ON / OFF)':'relay state (ON / OFF)',
+  'comanda releu din HA (ON / OFF)':'relay command from Home Assistant (ON / OFF)',
+  'Auto-discovery Home Assistant publicat la fiecare conectare la broker':'Home Assistant auto-discovery is published on every broker connection',
+  'Verificare status WiFi...':'Checking Wi-Fi status...',
+  'Conectare la reteaua WiFi':'Connect to the Wi-Fi network',
+  'Salveaza credentialele WiFi – ESP32 se va reconecta automat la pornire. Dupa salvare, brokerul MQTT devine accesibil.':'Save the Wi-Fi credentials. The ESP32 reconnects automatically at startup and can then reach the MQTT broker.',
+  'SSID (Nume retea)':'SSID (network name)',
+  'Parola WiFi':'Wi-Fi password',
+  'Salveaza si conecteaza':'Save and connect',
+  'Info:':'Information:',
+  'Configuratia este salvata in memoria flash (NVS)':'The configuration is stored in flash memory (NVS)',
+  'Daca conectarea esueaza, ESP32 revine in mod Access Point':'If the connection fails, the ESP32 returns to Access Point mode',
+  'Adresa IP AP:':'AP IP address:',
+  'Se citeste configuratia hardware...':'Reading hardware configuration...',
+  'Selecteaza GPIO pentru fiecare functie. Optiunea':'Select a GPIO for each function. The',
+  'Dezactivat':'Disabled',
+  'marcheaza perifericul ca neconfigurat. Modificarile sunt validate, salvate in NVS si aplicate dupa restart.':'option marks the peripheral as not configured. Changes are validated, stored in NVS and applied after restart.',
+  'Releu IN':'Relay IN',
+  'Adresa OLED':'OLED address',
+  'Releu activ pe LOW':'Relay active on LOW',
+  'Salveaza si reporneste':'Save and restart',
+  'Valori implicite':'Default values',
+  'Dispunere pini':'Pin layout',
+  'Vedere de sus. Conectorul USB este reprezentat in partea de jos.':'Top view. The USB connector is shown at the bottom.',
+  'Profil placa':'Board profile',
+  'Configurat':'Configured',
+  'Liber':'Free',
+  'Indisponibil':'Unavailable',
+  'Avertisment':'Warning',
+  'Alimentare':'Power',
+  'Inventar GPIO':'GPIO inventory',
+  'Pinii de flash si cei neexpusi pe placa sunt blocati. Pinii de boot sau USB sunt permisi, dar marcati cu avertisment.':'Flash pins and pins not exposed by the board are blocked. Boot and USB pins are allowed but marked with a warning.',
+  'Pauza':'Pause',
+  'Descarca':'Download',
+  'Sterge buffer':'Clear buffer',
+  'Inactiv':'Inactive',
+  'Deschide tab-ul pentru a citi jurnalul serial...':'Open this tab to read the serial log...',
+  'Afisarea este o copie a mesajelor aplicatiei trimise pe USB serial la 115200 baud. Placa pastreaza circular ultimii 8 KB in RAM; mesajele vechi sunt suprascrise automat.':'This is a copy of application messages sent over USB serial at 115200 baud. The board keeps the latest 8 KB in a circular RAM buffer; older messages are overwritten automatically.',
+  'Incarca informatii placa':'Load board information',
+  'Profil build':'Build profile',
+  'Revizie':'Revision',
+  'Nuclee CPU':'CPU cores',
+  'Frecventa':'Frequency',
+  'Capabilitati IoT':'IoT capabilities',
+  'Capabilitatea indica suportul placii si al platformei. Firmware-ul curent foloseste MQTT prin WiFi; Zigbee, Thread sau Matter necesita un firmware configurat explicit pentru protocolul ales.':'Capability indicates board and platform support. The current firmware uses MQTT over Wi-Fi; Zigbee, Thread or Matter require firmware explicitly configured for that protocol.',
+  'Memorie':'Memory',
+  'Heap liber':'Free heap',
+  'Heap min liber':'Minimum free heap',
+  'Sistem':'System',
+  'Program':'Firmware',
+  'Spatiu liber':'Free space'
+  ,'las gol daca nu e necesar':'leave empty if not required'
+  ,'las gol daca nu e necesara':'leave empty if not required'
+  ,'Nume retea WiFi':'Wi-Fi network name'
+};
+
+function normalizeUiText(value) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function translateStaticText() {
+  if (!originalTextNodes.length) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var node;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement && !['SCRIPT','STYLE'].includes(node.parentElement.tagName))
+        originalTextNodes.push({node:node, value:node.nodeValue});
+    }
+  }
+
+  originalTextNodes.forEach(function(entry) {
+    if (currentLanguage === 'ro') {
+      entry.node.nodeValue = entry.value;
+      return;
+    }
+    var source = normalizeUiText(entry.value);
+    if (!source) return;
+    var plain = source.replace(/^[^A-Za-z0-9]+/, '');
+    var prefix = source.slice(0, source.length - plain.length);
+    var translated = englishText[source] || englishText[plain];
+    if (translated) entry.node.nodeValue = prefix + translated;
+  });
+
+  document.querySelectorAll('input[placeholder]').forEach(function(input) {
+    if (!input.dataset.roPlaceholder) input.dataset.roPlaceholder = input.placeholder;
+    var source = input.dataset.roPlaceholder;
+    input.placeholder = currentLanguage === 'en' ? (englishText[source] || source) : source;
+  });
+  document.documentElement.lang = currentLanguage;
+  document.getElementById('uiLanguage').value = currentLanguage;
+}
+
+function tr(ro, en) {
+  return currentLanguage === 'en' ? (en || englishText[ro] || ro) : ro;
+}
+
+function applyUiLanguage(language) {
+  currentLanguage = language === 'en' ? 'en' : 'ro';
+  translateStaticText();
+  updateData();
+  if (hardwareData) loadHardwareCfg();
+  var boardContent = document.getElementById('boardContent');
+  if (boardContent && boardContent.style.display === 'block') loadBoardInfo();
+}
+
+function loadUiLanguage() {
+  fetch('/api/ui_config', {cache:'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { applyUiLanguage(d.language); })
+    .catch(function() { applyUiLanguage('ro'); });
+}
+
+function saveUiLanguage(language) {
+  applyUiLanguage(language);
+  fetch('/api/ui_config', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'language=' + encodeURIComponent(currentLanguage)
+  }).catch(function(){});
+}
+
 function showTab(name, btn) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -409,6 +636,19 @@ function updateData() {
   fetch('/data')
     .then(r => r.json())
     .then(d => {
+      document.getElementById('tempCard').style.display = d.dht_available ? 'block' : 'none';
+      document.getElementById('humCard').style.display = d.dht_available ? 'block' : 'none';
+      document.getElementById('motionCard').style.display = d.pir_available ? 'block' : 'none';
+      document.getElementById('relayCard').style.display = d.relay_available ? 'block' : 'none';
+      document.getElementById('wireDhtRow').style.display = d.dht_available ? 'list-item' : 'none';
+      document.getElementById('wirePirRow').style.display = d.pir_available ? 'list-item' : 'none';
+      document.getElementById('wireRelayRow').style.display = d.relay_available ? 'list-item' : 'none';
+      document.getElementById('wireOledRow').style.display = d.oled_available ? 'list-item' : 'none';
+      document.getElementById('wireHeartbeatRow').style.display = d.heartbeat_available ? 'list-item' : 'none';
+      document.getElementById('noExternalHardware').style.display =
+        d.dht_available || d.pir_available || d.relay_available ||
+        d.oled_available || d.heartbeat_available ? 'none' : 'list-item';
+
       document.getElementById('tempVal').textContent = d.temperature !== null ? d.temperature : '--';
       document.getElementById('humVal').textContent  = d.humidity    !== null ? d.humidity    : '--';
 
@@ -419,12 +659,12 @@ function updateData() {
         mc.classList.add('alert');
         ci.classList.add('pulse');
         ci.textContent = '!';
-        mt.textContent = 'MISCARE DETECTATA!';
+        mt.textContent = tr('MISCARE DETECTATA!', 'MOTION DETECTED!');
       } else {
         mc.classList.remove('alert');
         ci.classList.remove('pulse');
         ci.textContent = '\u2713';
-        mt.textContent = 'Fara miscare';
+        mt.textContent = tr('Fara miscare', 'No motion');
       }
 
       document.getElementById('relayVal').textContent = d.relay ? 'ON' : 'OFF';
@@ -432,15 +672,17 @@ function updateData() {
       var bar = document.getElementById('mqttBar');
       if (d.mqtt_connected) {
         bar.className = 'mqtt-bar mqtt-ok';
-        bar.textContent = 'MQTT: Conectat la broker \u2714';
+        bar.textContent = tr('MQTT: Conectat la broker \u2714', 'MQTT: Connected to broker \u2714');
       } else {
         bar.className = 'mqtt-bar mqtt-err';
-        bar.textContent = 'MQTT: Deconectat \u2014 verifica IP broker si WiFi';
+        bar.textContent = tr('MQTT: Deconectat \u2014 verifica IP broker si WiFi',
+                             'MQTT: Disconnected \u2014 check broker IP and Wi-Fi');
       }
     })
     .catch(function() {
       document.getElementById('mqttBar').className = 'mqtt-bar mqtt-unknown';
-      document.getElementById('mqttBar').textContent = 'Dashboard: eroare citire date...';
+      document.getElementById('mqttBar').textContent =
+        tr('Dashboard: eroare citire date...', 'Dashboard: data read error...');
     });
 }
 setInterval(updateData, 2000);
@@ -450,6 +692,83 @@ function setRelay(s) {
   fetch('/api/relay?state=' + s)
     .catch(function(){});
 }
+
+var rgbLedOn = false;
+var rgbUpdateTimer = null;
+
+function rgbHexToValues(hex) {
+  return {
+    red: parseInt(hex.slice(1, 3), 16),
+    green: parseInt(hex.slice(3, 5), 16),
+    blue: parseInt(hex.slice(5, 7), 16)
+  };
+}
+
+function renderRgbLed(d) {
+  var card = document.getElementById('rgbCard');
+  card.style.display = d.supported ? 'block' : 'none';
+  if (!d.supported) return;
+
+  rgbLedOn = !!d.on;
+  var hex = '#' + [d.red, d.green, d.blue].map(function(value) {
+    return Number(value).toString(16).padStart(2, '0');
+  }).join('').toUpperCase();
+  document.getElementById('rgbColor').value = hex;
+  document.getElementById('rgbBrightness').value = d.brightness;
+  document.getElementById('rgbBrightnessValue').textContent = d.brightness + '%';
+  document.getElementById('rgbHex').textContent = hex;
+  document.getElementById('rgbPin').textContent = d.pin >= 0 ? 'GPIO' + d.pin : 'onboard';
+  document.getElementById('rgbState').textContent = d.on ? 'ON' : 'OFF';
+  var intensity = d.on ? Number(d.brightness) / 100 : 0;
+  document.getElementById('rgbPreview').style.background = d.on ? hex : '#000000';
+  document.getElementById('rgbPreview').style.boxShadow =
+    '0 0 ' + (10 + Math.round(24 * intensity)) + 'px ' + (d.on ? hex : 'rgba(255,255,255,.2)');
+}
+
+function loadRgbLed() {
+  fetch('/api/rgb_led', {cache:'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(renderRgbLed)
+    .catch(function(){});
+}
+
+function sendRgbLed(state) {
+  var color = rgbHexToValues(document.getElementById('rgbColor').value);
+  var brightness = document.getElementById('rgbBrightness').value;
+  var body = 'red=' + color.red + '&green=' + color.green + '&blue=' + color.blue
+    + '&brightness=' + encodeURIComponent(brightness);
+  if (state !== undefined) body += '&state=' + state;
+
+  fetch('/api/rgb_led', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:body
+  })
+    .then(function(r) { return r.json().then(function(d) { return {ok:r.ok, data:d}; }); })
+    .then(function(result) {
+      if (result.ok && result.data.led) renderRgbLed(result.data.led);
+    })
+    .catch(function(){});
+}
+
+function setRgbLed(state) {
+  rgbLedOn = !!state;
+  sendRgbLed(state ? 1 : 0);
+}
+
+function scheduleRgbUpdate() {
+  var color = document.getElementById('rgbColor').value.toUpperCase();
+  var brightness = document.getElementById('rgbBrightness').value;
+  document.getElementById('rgbHex').textContent = color;
+  document.getElementById('rgbBrightnessValue').textContent = brightness + '%';
+  document.getElementById('rgbPreview').style.background = rgbLedOn ? color : '#000000';
+  clearTimeout(rgbUpdateTimer);
+  rgbUpdateTimer = setTimeout(function() { sendRgbLed(); }, 120);
+}
+
+document.getElementById('rgbColor').addEventListener('input', scheduleRgbUpdate);
+document.getElementById('rgbBrightness').addEventListener('input', scheduleRgbUpdate);
+loadRgbLed();
 
 // ---- Serial Log ----
 var serialCursor = 0;
@@ -474,27 +793,33 @@ function loadSerialLog() {
       var output = document.getElementById('serialOutput');
       if (serialCursor === 0) output.textContent = '';
       if (data.dropped)
-        output.textContent += '\n[Web] O parte din jurnal a fost suprascrisa in buffer.\n';
+        output.textContent += tr(
+          '\n[Web] O parte din jurnal a fost suprascrisa in buffer.\n',
+          '\n[Web] Part of the log was overwritten in the buffer.\n');
       output.textContent += data.text;
       if (output.textContent.length > 50000)
         output.textContent = output.textContent.slice(-50000);
       if (Number.isFinite(data.next)) serialCursor = data.next;
       document.getElementById('serialStatus').textContent =
-        'Conectat | cursor ' + serialCursor + ' | buffer placa 8 KB';
+        tr('Conectat', 'Connected') + ' | cursor ' + serialCursor + ' | ' +
+        tr('buffer placa 8 KB', 'board buffer 8 KB');
       if (document.getElementById('serialAutoScroll').checked)
         output.scrollTop = output.scrollHeight;
     })
     .catch(function() {
-      document.getElementById('serialStatus').textContent = 'Eroare la citirea jurnalului';
+      document.getElementById('serialStatus').textContent =
+        tr('Eroare la citirea jurnalului', 'Error reading the log');
     })
     .finally(function() { serialLoading = false; });
 }
 
 function toggleSerialPause() {
   serialPaused = !serialPaused;
-  document.getElementById('serialPauseBtn').textContent = serialPaused ? 'Continua' : 'Pauza';
+  document.getElementById('serialPauseBtn').textContent = serialPaused
+    ? tr('Continua', 'Resume') : tr('Pauza', 'Pause');
   document.getElementById('serialStatus').textContent =
-    serialPaused ? 'Actualizare oprita' : 'Se reconecteaza...';
+    serialPaused ? tr('Actualizare oprita', 'Updates paused')
+                 : tr('Se reconecteaza...', 'Reconnecting...');
   if (!serialPaused) loadSerialLog();
 }
 
@@ -504,11 +829,12 @@ function clearSerialLog() {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       serialCursor = 0;
       document.getElementById('serialOutput').textContent = '';
-      document.getElementById('serialStatus').textContent = 'Buffer sters';
+      document.getElementById('serialStatus').textContent = tr('Buffer sters', 'Buffer cleared');
       loadSerialLog();
     })
     .catch(function() {
-      document.getElementById('serialStatus').textContent = 'Stergerea bufferului a esuat';
+      document.getElementById('serialStatus').textContent =
+        tr('Stergerea bufferului a esuat', 'Failed to clear the buffer');
     });
 }
 
@@ -538,15 +864,18 @@ function loadMqttCfg() {
       var bar = document.getElementById('mqttCfgBar');
       if (d.connected) {
         bar.className = 'mqtt-bar mqtt-ok';
-        bar.textContent = 'MQTT: Conectat la ' + d.broker + ':' + d.port + ' \u2714';
+        bar.textContent = tr('MQTT: Conectat la ', 'MQTT: Connected to ') +
+                          d.broker + ':' + d.port + ' \u2714';
       } else {
         bar.className = 'mqtt-bar mqtt-err';
-        bar.textContent = 'MQTT: Deconectat de la ' + d.broker + ':' + d.port;
+        bar.textContent = tr('MQTT: Deconectat de la ', 'MQTT: Disconnected from ') +
+                          d.broker + ':' + d.port;
       }
     })
     .catch(function() {
       document.getElementById('mqttCfgBar').className = 'mqtt-bar mqtt-unknown';
-      document.getElementById('mqttCfgBar').textContent = 'Eroare citire configuratie MQTT';
+      document.getElementById('mqttCfgBar').textContent =
+        tr('Eroare citire configuratie MQTT', 'Error reading MQTT configuration');
     });
 }
 
@@ -557,9 +886,12 @@ function saveMqttCfg() {
   var user     = document.getElementById('mqttUser').value.trim();
   var pass     = document.getElementById('mqttPass').value;
 
-  if (!broker) { showMqttMsg('Adresa IP broker este obligatorie!', 'err'); return; }
+  if (!broker) {
+    showMqttMsg(tr('Adresa IP broker este obligatorie!', 'Broker IP address is required!'), 'err');
+    return;
+  }
 
-  showMqttMsg('Se salveaza...', 'info');
+  showMqttMsg(tr('Se salveaza...', 'Saving...'), 'info');
 
   var body = 'broker=' + encodeURIComponent(broker)
            + '&port='      + encodeURIComponent(port)
@@ -574,10 +906,15 @@ function saveMqttCfg() {
   })
   .then(r => r.json())
   .then(d => {
-    showMqttMsg(d.message || (d.ok ? 'Salvat!' : 'Eroare!'), d.ok ? 'ok' : 'err');
+    showMqttMsg(d.ok ? tr('Salvat! ESP32 se reconecteaza la broker.',
+                          'Saved! The ESP32 is reconnecting to the broker.')
+                     : (d.error || tr('Eroare!', 'Error!')),
+                d.ok ? 'ok' : 'err');
     if (d.ok) setTimeout(loadMqttCfg, 3000);
   })
-  .catch(function() { showMqttMsg('Eroare la salvare!', 'err'); });
+  .catch(function() {
+    showMqttMsg(tr('Eroare la salvare!', 'Error while saving!'), 'err');
+  });
 }
 
 function showMqttMsg(txt, type) {
@@ -597,10 +934,12 @@ function loadWifiStatus() {
       var box = document.getElementById('wifiStatusBox');
       if (d.connected) {
         box.className = 'wifi-status wifi-ok';
-        box.innerHTML = '&#10003; Conectat la <strong>' + d.ssid + '</strong> &nbsp;|&nbsp; IP: ' + d.ip;
+        box.innerHTML = '&#10003; ' + tr('Conectat la', 'Connected to') +
+                        ' <strong>' + d.ssid + '</strong> &nbsp;|&nbsp; IP: ' + d.ip;
       } else {
         box.className = 'wifi-status wifi-ap';
-        box.innerHTML = '&#128225; Mod Access Point &nbsp;|&nbsp; IP: ' + d.ip;
+        box.innerHTML = '&#128225; ' + tr('Mod Access Point', 'Access Point mode') +
+                        ' &nbsp;|&nbsp; IP: ' + d.ip;
       }
       if (d.saved_ssid) document.getElementById('wifiSSID').value = d.saved_ssid;
     })
@@ -610,29 +949,38 @@ function loadWifiStatus() {
 function saveWifi() {
   var ssid = document.getElementById('wifiSSID').value;
   var pass = document.getElementById('wifiPass').value;
-  if (!ssid) { showMsg('Introduceti SSID!', 'err'); return; }
-  showMsg('Se salveaza...', 'info');
+  if (!ssid) {
+    showMsg(tr('Introduceti SSID!', 'Enter the SSID!'), 'err');
+    return;
+  }
+  showMsg(tr('Se salveaza...', 'Saving...'), 'info');
   fetch('/wifi_config', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(pass)
   })
   .then(r => r.json())
-  .then(d => { showMsg(d.message, d.success ? 'ok' : 'err'); })
-  .catch(function() { showMsg('Eroare la salvare!', 'err'); });
+  .then(d => {
+    showMsg(d.success
+      ? tr('Configuratie salvata! ESP32 va reporni...', 'Configuration saved! The ESP32 will restart...')
+      : tr('SSID invalid!', 'Invalid SSID!'), d.success ? 'ok' : 'err');
+  })
+  .catch(function() { showMsg(tr('Eroare la salvare!', 'Error while saving!'), 'err'); });
 }
 
 function clearWifi() {
-  if (!confirm('Stergeti configuratia WiFi salvata?')) return;
+  if (!confirm(tr('Stergeti configuratia WiFi salvata?',
+                  'Delete the saved Wi-Fi configuration?'))) return;
   fetch('/wifi_clear')
     .then(r => r.json())
     .then(d => {
-      showMsg(d.message, 'ok');
+      showMsg(tr('Configuratia WiFi a fost stearsa!',
+                 'Wi-Fi configuration cleared!'), 'ok');
       document.getElementById('wifiSSID').value = '';
       document.getElementById('wifiPass').value = '';
       setTimeout(loadWifiStatus, 800);
     })
-    .catch(function() { showMsg('Eroare!', 'err'); });
+    .catch(function() { showMsg(tr('Eroare!', 'Error!'), 'err'); });
 }
 
 function showMsg(txt, type) {
@@ -735,8 +1083,40 @@ var boardLayouts = {
   }
 };
 
+function translateHardwareText(value) {
+  if (currentLanguage !== 'en' || !value) return value;
+  var exact = {
+    'LED RGB onboard':'onboard RGB LED',
+    'rezervat pentru memoria flash':'reserved for flash memory',
+    'neexpus pe ESP32-S3-DevKitC-1':'not exposed on ESP32-S3-DevKitC-1',
+    'neexpus pe ESP32-C6-DevKitC-1':'not exposed on ESP32-C6-DevKitC-1',
+    'neexpus pe ESP32-C3-DevKitM-1':'not exposed on ESP32-C3-DevKitM-1',
+    'USB OTG/JTAG implicit':'default USB OTG/JTAG',
+    'UART0 folosit pentru programare/log':'UART0 used for programming/logging',
+    'indisponibil pe modulele cu flash/PSRAM Octal':'unavailable on modules with Octal flash/PSRAM',
+    'LED RGB onboard pe unele revizii':'onboard RGB LED on some revisions',
+    'pin de boot/strapping':'boot/strapping pin',
+    'USB-JTAG implicit':'default USB-JTAG',
+    'doar intrare':'input only',
+    'indisponibil':'unavailable',
+    'liber':'free',
+    'releu':'relay'
+  };
+  if (exact[value]) return exact[value];
+  return value
+    .replace('GPIO invalid pentru acest cip', 'GPIO is invalid for this chip')
+    .replace(' este atribuit simultan pentru ', ' is assigned to both ')
+    .replace(' si ', ' and ')
+    .replace(' nu poate fi iesire', ' cannot be used as an output')
+    .replace(' este rezervat pentru memoria flash', ' is reserved for flash memory')
+    .replace('scrierea in NVS a esuat', 'failed to write to NVS')
+    .replace('SDA si SCL trebuie configurati impreuna sau dezactivati impreuna',
+             'SDA and SCL must be configured or disabled together')
+    .replace('adresa OLED trebuie sa fie', 'OLED address must be');
+}
+
 function gpioLabel(pin) {
-  return Number(pin) >= 0 ? 'GPIO' + pin : 'neconfigurat';
+  return Number(pin) >= 0 ? 'GPIO' + pin : tr('neconfigurat', 'not configured');
 }
 
 function selectedPinRoles() {
@@ -781,15 +1161,15 @@ function createBoardPin(pin, side, pinInfo, roles) {
   if (role) {
     var roleText = document.createElement('span');
     roleText.className = 'pin-role';
-    roleText.textContent = ' | ' + role;
+    roleText.textContent = ' | ' + translateHardwareText(role);
     text.appendChild(roleText);
   }
 
   if (info) {
     var details = [];
-    if (info.restriction) details.push(info.restriction);
-    if (info.warning) details.push(info.warning);
-    if (!info.output) details.push('doar intrare');
+    if (info.restriction) details.push(translateHardwareText(info.restriction));
+    if (info.warning) details.push(translateHardwareText(info.warning));
+    if (!info.output) details.push(tr('doar intrare', 'input only'));
     item.title = details.join(' | ');
   }
 
@@ -810,8 +1190,20 @@ function renderBoardPinout() {
   var pinInfo = {};
   hardwareData.pins.forEach(function(pin) { pinInfo[pin.pin] = pin; });
 
-  document.getElementById('pinoutTitle').textContent = layout.title;
-  document.getElementById('pinoutNote').textContent = layout.note;
+  if (currentLanguage === 'en') {
+    document.getElementById('pinoutTitle').textContent = layout.title
+      .replace('pini', 'pins').replace('headere', 'headers');
+    document.getElementById('pinoutNote').textContent = layout.note
+      .replace('Vedere de sus, USB jos.', 'Top view, USB at the bottom.')
+      .replace('Profilul generic WROOM foloseste aranjamentul comun al placii cu 30 de pini.',
+               'The generic WROOM profile uses the common 30-pin board layout.')
+      .replace('Ordinea pinilor urmeaza headerele', 'Pin order follows headers')
+      .replace('Ordinea celor 44 de pini urmeaza headerele', 'The 44-pin order follows headers')
+      .replace('ale ', 'of ');
+  } else {
+    document.getElementById('pinoutTitle').textContent = layout.title;
+    document.getElementById('pinoutNote').textContent = layout.note;
+  }
   document.getElementById('pinoutChip').innerHTML = layout.chip;
   document.getElementById('pinoutProfile').textContent = hardwareData.profile;
 
@@ -832,13 +1224,15 @@ function bindPinoutPreview() {
 function fillPinSelect(id, pins, value, needsOutput) {
   var select = document.getElementById(id);
   select.innerHTML = '';
-  select.add(new Option('Dezactivat / neconfigurat', '-1'));
+  select.add(new Option(tr('Dezactivat / neconfigurat', 'Disabled / not configured'), '-1'));
   pins.forEach(function(p) {
     if (p.reserved || (needsOutput && !p.output)) return;
     var label = 'GPIO' + p.pin;
-    if (!p.output) label += ' (doar intrare)';
-    if (p.role && p.pin !== Number(value)) label += ' - ocupat: ' + p.role;
-    if (p.warning) label += ' - ATENTIE: ' + p.warning;
+    if (!p.output) label += tr(' (doar intrare)', ' (input only)');
+    if (p.role && p.pin !== Number(value))
+      label += tr(' - ocupat: ', ' - assigned: ') + translateHardwareText(p.role);
+    if (p.warning)
+      label += tr(' - ATENTIE: ', ' - WARNING: ') + translateHardwareText(p.warning);
     select.add(new Option(label, String(p.pin)));
   });
   select.value = String(value);
@@ -861,7 +1255,9 @@ function loadHardwareCfg() {
     .then(d => {
       hardwareData = d;
       document.getElementById('hwSummary').textContent =
-        'Cip: ' + d.target + ' | Profil build: ' + d.profile + ' | ' + d.gpio_count + ' pozitii GPIO';
+        tr('Cip: ', 'Chip: ') + d.target + ' | ' +
+        tr('Profil build: ', 'Build profile: ') + d.profile + ' | ' +
+        d.gpio_count + tr(' pozitii GPIO', ' GPIO positions');
       fillPinSelect('hwDht', d.pins, d.dht_pin, true);
       fillPinSelect('hwPir', d.pins, d.pir_pin, false);
       fillPinSelect('hwRelay', d.pins, d.relay_pin, true);
@@ -883,16 +1279,19 @@ function loadHardwareCfg() {
         if (p.reserved) item.classList.add('gpio-reserved');
         if (p.warning) item.classList.add('gpio-warning');
         var text = 'GPIO' + p.pin + ': ';
-        if (p.reserved) text += p.restriction || 'indisponibil';
-        else if (p.role) text += p.role;
-        else text += 'liber';
-        if (!p.output) text += ', doar IN';
-        if (p.warning) text += ' | ' + p.warning;
+        if (p.reserved) text += translateHardwareText(p.restriction || 'indisponibil');
+        else if (p.role) text += translateHardwareText(p.role);
+        else text += tr('liber', 'free');
+        if (!p.output) text += tr(', doar IN', ', input only');
+        if (p.warning) text += ' | ' + translateHardwareText(p.warning);
         item.textContent = text;
         grid.appendChild(item);
       });
     })
-    .catch(function() { showHwMsg('Eroare la citirea configuratiei hardware.', 'err'); });
+    .catch(function() {
+      showHwMsg(tr('Eroare la citirea configuratiei hardware.',
+                   'Error reading the hardware configuration.'), 'err');
+    });
 }
 
 function saveHardware() {
@@ -906,23 +1305,38 @@ function saveHardware() {
     + '&relay_active_low=' + (document.getElementById('hwRelayLow').checked ? '1' : '0')
     + '&oled_address=' + encodeURIComponent(document.getElementById('hwOledAddress').value);
 
-  showHwMsg('Se valideaza si se salveaza...', 'info');
+  showHwMsg(tr('Se valideaza si se salveaza...', 'Validating and saving...'), 'info');
   fetch('/api/hardware_config', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: body
   })
   .then(r => r.json().then(d => ({ok:r.ok, data:d})))
-  .then(x => showHwMsg(x.data.message || x.data.error || 'Eroare', x.ok ? 'ok' : 'err'))
-  .catch(function() { showHwMsg('Conexiunea s-a inchis in timpul restartului.', 'info'); });
+  .then(x => showHwMsg(
+    x.ok ? tr('Configuratia a fost salvata. Dispozitivul reporneste.',
+              'Configuration saved. The device is restarting.')
+         : translateHardwareText(x.data.error || tr('Eroare', 'Error')),
+    x.ok ? 'ok' : 'err'))
+  .catch(function() {
+    showHwMsg(tr('Conexiunea s-a inchis in timpul restartului.',
+                 'The connection closed during restart.'), 'info');
+  });
 }
 
 function resetHardware() {
-  if (!confirm('Restaurati pinii impliciti pentru profilul acestei placi?')) return;
+  if (!confirm(tr('Restaurati pinii impliciti pentru profilul acestei placi?',
+                  'Restore the default pins for this board profile?'))) return;
   fetch('/api/hardware_reset', {method:'POST'})
     .then(r => r.json())
-    .then(d => showHwMsg(d.message || 'Configuratie resetata.', d.ok ? 'ok' : 'err'))
-    .catch(function() { showHwMsg('Conexiunea s-a inchis in timpul restartului.', 'info'); });
+    .then(d => showHwMsg(
+      d.ok ? tr('Profilul implicit a fost restaurat. Dispozitivul reporneste.',
+                'The default profile was restored. The device is restarting.')
+           : tr('Resetarea configuratiei a esuat.', 'Failed to reset the configuration.'),
+      d.ok ? 'ok' : 'err'))
+    .catch(function() {
+      showHwMsg(tr('Conexiunea s-a inchis in timpul restartului.',
+                   'The connection closed during restart.'), 'info');
+    });
 }
 
 function showHwMsg(txt, type) {
@@ -934,6 +1348,13 @@ function showHwMsg(txt, type) {
 }
 
 // ---- Board Info ----
+function setCapability(statusId, detailId, supported, detail) {
+  var status = document.getElementById(statusId);
+  status.textContent = supported ? tr('DA', 'YES') : tr('NU', 'NO');
+  status.className = 'cap-status ' + (supported ? 'cap-yes' : 'cap-no');
+  document.getElementById(detailId).textContent = detail;
+}
+
 function loadBoardInfo() {
   fetch('/api/board_info')
     .then(r => r.json())
@@ -943,8 +1364,35 @@ function loadBoardInfo() {
       document.getElementById('biChipRev').textContent   = d.chip_revision;
       document.getElementById('biCores').textContent     = d.cpu_cores + ' x ' + d.cpu_freq + ' MHz';
       document.getElementById('biFreq').textContent      = d.cpu_freq + ' MHz';
+
+      var zigbeeDetail = d.zigbee_capable
+        ? tr('Radio IEEE 802.15.4 disponibil. Mod firmware: ',
+             'IEEE 802.15.4 radio available. Firmware mode: ') +
+          (d.zigbee_firmware_mode || tr('necunoscut', 'unknown')) + '.'
+        : tr('Lipseste radioul IEEE 802.15.4 necesar pentru Zigbee nativ.',
+             'The IEEE 802.15.4 radio required for native Zigbee is not available.');
+      setCapability('biZigbeeStatus', 'biZigbeeDetail', d.zigbee_capable, zigbeeDetail);
+
+      var threadDetail = d.thread_capable
+        ? tr('Radio IEEE 802.15.4 disponibil pentru OpenThread si Matter over Thread.',
+             'IEEE 802.15.4 radio available for OpenThread and Matter over Thread.')
+        : tr('Thread nativ nu este disponibil fara radio IEEE 802.15.4.',
+             'Native Thread is unavailable without an IEEE 802.15.4 radio.');
+      setCapability('biThreadStatus', 'biThreadDetail', d.thread_capable, threadDetail);
+
+      var matterTransports = [];
+      if (d.matter_wifi_capable) matterTransports.push('WiFi');
+      if (d.matter_thread_capable) matterTransports.push('Thread');
+      var matterDetail = d.matter_capable
+        ? tr('Transporturi hardware posibile: ', 'Available hardware transports: ') +
+          matterTransports.join(' + ') + '.'
+        : tr('Placa nu ofera un transport IP compatibil Matter in aceasta configuratie.',
+             'The board does not provide a Matter-compatible IP transport in this configuration.');
+      setCapability('biMatterStatus', 'biMatterDetail', d.matter_capable, matterDetail);
+
       document.getElementById('biFlash').textContent     = (d.flash_size / 1048576).toFixed(1) + ' MB';
-      document.getElementById('biPsram').textContent     = d.psram_size > 0 ? (d.psram_size / 1048576).toFixed(1) + ' MB' : 'Nu';
+      document.getElementById('biPsram').textContent     =
+        d.psram_size > 0 ? (d.psram_size / 1048576).toFixed(1) + ' MB' : tr('Nu', 'No');
       document.getElementById('biFreeHeap').textContent  = (d.free_heap / 1024).toFixed(1) + ' KB';
       document.getElementById('biMinHeap').textContent   = (d.min_free_heap / 1024).toFixed(1) + ' KB';
       document.getElementById('biSdk').textContent       = d.sdk_version || '-';
@@ -956,10 +1404,14 @@ function loadBoardInfo() {
       document.getElementById('biMd5').textContent       = d.sketch_md5 || '-';
       document.getElementById('boardContent').style.display = 'block';
     })
-    .catch(function() { alert('Eroare la citirea informatiilor placii!'); });
+    .catch(function() {
+      alert(tr('Eroare la citirea informatiilor placii!',
+               'Error reading board information!'));
+    });
 }
 
 loadHardwareCfg();
+loadUiLanguage();
 </script>
 </body>
 </html>

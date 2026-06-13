@@ -95,7 +95,12 @@ HardwareConfig HardwareConfigStore::defaults() const
 HardwareConfig HardwareConfigStore::load()
 {
   HardwareConfig config = defaults();
-  _preferences.begin("hardware", true);
+  // Create the namespace on first boot to avoid a harmless NOT_FOUND error
+  // from Preferences when a new/erased board is opened read-only.
+  if (!_preferences.begin("hardware", false)) {
+    serialLog.println("[HW] NVS indisponibil; se folosesc valorile implicite");
+    return config;
+  }
   config.dhtPin = _preferences.getChar("dht", config.dhtPin);
   config.pirPin = _preferences.getChar("pir", config.pirPin);
   config.relayPin = _preferences.getChar("relay", config.relayPin);
@@ -120,7 +125,7 @@ bool HardwareConfigStore::save(const HardwareConfig& config)
   String error;
   if (!validateHardwareConfig(config, error)) return false;
 
-  _preferences.begin("hardware", false);
+  if (!_preferences.begin("hardware", false)) return false;
   bool ok = true;
   ok &= _preferences.putChar("dht", config.dhtPin) > 0;
   ok &= _preferences.putChar("pir", config.pirPin) > 0;
@@ -136,13 +141,17 @@ bool HardwareConfigStore::save(const HardwareConfig& config)
 
 void HardwareConfigStore::clear()
 {
-  _preferences.begin("hardware", false);
+  if (!_preferences.begin("hardware", false)) return;
   _preferences.clear();
   _preferences.end();
 }
 
 bool isReservedPin(int pin)
 {
+#if defined(PIN_RGB_LED)
+  if (pin == PIN_RGB_LED) return true;
+#endif
+
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
   return pin >= 26 && pin <= 34;
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
@@ -158,6 +167,10 @@ bool isReservedPin(int pin)
 
 const char* pinRestriction(int pin)
 {
+#if defined(PIN_RGB_LED)
+  if (pin == PIN_RGB_LED) return "LED RGB onboard";
+#endif
+
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
   if (pin >= 26 && pin <= 32) return "rezervat pentru memoria flash";
   if (pin == 33 || pin == 34) return "neexpus pe ESP32-S3-DevKitC-1";
@@ -175,11 +188,15 @@ const char* pinRestriction(int pin)
 
 const char* pinWarning(int pin)
 {
+#if defined(PIN_RGB_LED)
+  if (pin == PIN_RGB_LED) return "";
+#endif
+
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
   if (pin == 19 || pin == 20) return "USB OTG/JTAG implicit";
   if (pin == 43 || pin == 44) return "UART0 folosit pentru programare/log";
   if (pin >= 35 && pin <= 37) return "indisponibil pe modulele cu flash/PSRAM Octal";
-  if (pin == 38 || pin == 48) return "posibil LED RGB onboard, in functie de revizie";
+  if (pin == 38) return "LED RGB onboard pe unele revizii";
   if (pin == 0 || pin == 3 || pin == 45 || pin == 46) return "pin de boot/strapping";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   if (pin == 12 || pin == 13) return "USB-JTAG implicit";
