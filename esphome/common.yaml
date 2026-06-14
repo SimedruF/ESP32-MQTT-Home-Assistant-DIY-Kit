@@ -23,6 +23,8 @@ wifi:
     ssid: "${friendly_name}"
     password: !secret fallback_password
 
+captive_portal:
+
 web_server:
   port: 80
   version: 3

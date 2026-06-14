@@ -332,6 +332,16 @@ cd esphome
 ./setup.sh init
 ```
 
+Pe Windows, deschide PowerShell în directorul `esphome` și rulează:
+
+```powershell
+.\setup.ps1 init
+```
+
+Din Command Prompt poate fi folosit direct `setup.cmd init`. Este necesar Python
+3.11 sau mai nou; scriptul creează automat mediul virtual și instalează
+dependențele.
+
 Scriptul detectează automat Python 3.11 sau mai nou, creează mediul local
 `esphome/.venv`, instalează versiunea ESPHome din `requirements.txt` și generează
 parola access point-ului și cheile API/OTA în `secrets.yaml`. Nu sunt solicitate
@@ -340,11 +350,16 @@ este exclus din Git. Build-urile sunt păstrate în
 `~/.cache/esp32-ha-kit-esphome`, deoarece ESP-IDF nu acceptă spații în calea
 directorului de compilare.
 
-Firmware-ul ESPHome pornește numai în mod access point, cu SSID-ul egal cu numele
-profilului, de exemplu `HA Kit C6 Super Mini`. După conectarea la această rețea,
-interfața web este disponibilă la `http://192.168.4.1`. Native API și OTA nu sunt
-accesibile din rețeaua locală a casei; clientul trebuie conectat direct la
-access point-ul plăcii.
+La prima pornire, firmware-ul ESPHome pornește numai în mod access point, cu
+SSID-ul egal cu numele profilului, de exemplu `HA Kit C6 Super Mini`. După
+conectarea la această rețea, deschide `http://192.168.4.1`, selectează rețeaua
+WiFi a casei și introdu parola. ESPHome salvează credențialele în flash și se
+conectează la router; access point-ul rămâne disponibil ca fallback dacă
+legătura nu mai poate fi stabilită.
+
+După conectarea la router, Native API, OTA și pagina web devin accesibile la
+`http://<device_name>.local` sau la adresa IP atribuită prin DHCP. Firmware-ul
+YAML nu conține credențialele rețelei casei.
 
 Pentru configurarea completă AP-only a unei plăci ESP32-WROOM există scriptul
 dedicat:
@@ -354,10 +369,53 @@ cd esphome
 ./setup-wroom-ap.sh /dev/ttyUSB0
 ```
 
-Scriptul creează mediul ESPHome și `secrets.yaml` dacă lipsesc, validează,
-compilează și programează profilul WROOM. Dacă există o singură placă
-`/dev/ttyUSB*`, portul poate fi omis. Opțiunea `--force-secrets` generează parole
-și chei noi și trebuie folosită numai când cele existente nu mai sunt necesare.
+Echivalentul Windows este:
+
+```powershell
+.\setup-wroom-ap.ps1 COM3
+```
+
+Din Command Prompt:
+
+```bat
+setup-wroom-ap.cmd COM3
+```
+
+Portul poate fi omis dacă este detectat un singur adaptor USB-serial. Când sunt
+mai multe porturi COM, scriptul solicită alegerea explicită pentru a evita
+programarea altei plăci.
+
+Scriptul creează mediul ESPHome, generează `secrets.yaml`, validează, compilează
+și programează profilul WROOM. După upload, conectează-te la
+`ESP32 HA Kit WROOM` și configurează routerul din `http://192.168.4.1`. Dacă
+există o singură placă `/dev/ttyUSB*`, portul poate fi omis. Scriptul generează
+implicit parole și chei noi la fiecare rulare, astfel încât două plăci livrate
+unor clienți diferiți să nu aibă aceleași credențiale. Opțiunea
+`--reuse-secrets` pe Linux sau `-ReuseSecrets` pe Windows se folosește numai
+când se repetă programarea aceleiași plăci.
+
+La final este generat
+`esphome/generated/esp32-ha-kit-wroom-setup.pdf`. Documentul conține ID-ul unic
+al configurării, un QR
+WiFi pentru conectarea la access point, un QR către
+`http://esp32-ha-kit-wroom.local/`, cheia API, parola OTA și datele de
+autentificare tipărite. PDF-ul conține secrete, are permisiuni `600`, este exclus
+din Git și trebuie predat numai proprietarului plăcii. Permisiunea `600` este
+aplicată pe sistemele care implementează permisiuni POSIX.
+
+Portalul captiv ESPHome permite clientului să introducă singur SSID-ul și parola
+rețelei sale; aceste date nu sunt cunoscute producătorului. Cheia API, parola OTA
+și autentificarea `web_server` sunt însă valori incluse la compilare și nu pot fi
+schimbate din portalul captiv standard. Pentru ca producătorul să nu mai cunoască
+niciuna dintre credențialele finale, clientul trebuie să adopte sau să
+recompileze dispozitivul în propriul ESPHome Device Builder. După instalarea
+firmware-ului clientului, credențialele inițiale din PDF nu mai trebuie
+considerate valide.
+
+ESPHome folosește HTTP Basic Auth pentru pagina web. Parametrii
+`?username=...&password=...` nu autentifică cererea. Forma
+`http://username:password@host/` nu este folosită deoarece expune parola în URL
+și nu funcționează consecvent în browserele moderne.
 
 Comenzi uzuale:
 
@@ -378,7 +436,18 @@ Comenzi uzuale:
 ./setup.sh logs c3 esp32-ha-kit-c3.local
 ```
 
-Lista completă de comenzi este disponibilă cu `./setup.sh --help`.
+Comenzile PowerShell au aceeași structură:
+
+```powershell
+.\setup.ps1 check all
+.\setup.ps1 compile wroom
+.\setup.ps1 run wroom COM3
+.\setup.ps1 upload c6-supermini COM5
+.\setup.ps1 logs c3 esp32-ha-kit-c3.local
+```
+
+Lista completă de comenzi este disponibilă cu `./setup.sh --help` pe
+Linux/macOS sau `.\setup.ps1 help` pe Windows.
 
 ---
 
@@ -400,7 +469,10 @@ ESP32 MQTT Home Assistant DIY Kit/
 │   ├── secrets.example.yaml     # Model pentru credențiale și chei
 │   ├── requirements.txt         # Versiunea ESPHome utilizată
 │   ├── setup.sh                 # Setup, validare, build, upload și loguri
-│   └── setup-wroom-ap.sh        # Instalare completă WROOM în mod AP-only
+│   ├── setup-wroom-ap.sh        # Instalare completă WROOM în mod AP-only
+│   ├── setup.ps1 / setup.cmd    # Echivalent Windows pentru setup.sh
+│   ├── setup-wroom-ap.ps1/.cmd  # Instalare completă WROOM pe Windows
+│   └── generate-wroom-setup-pdf.py # Fisa PDF cu QR-uri si credentiale
 ├── lib/
 │   └── WiFiWebManager/          # Biblioteca custom: WiFi AP/STA + WebServer
 │       ├── WiFiWebManager.h

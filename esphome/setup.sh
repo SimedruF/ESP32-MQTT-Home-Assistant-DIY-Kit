@@ -198,6 +198,7 @@ import os
 import secrets
 
 values = {
+    "provisioning_id": secrets.token_hex(3).upper(),
     "fallback_password": (
         os.environ["AP_PASSWORD"] or secrets.token_urlsafe(18)
     ),
