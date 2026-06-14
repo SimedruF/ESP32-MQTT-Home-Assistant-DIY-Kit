@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ghid configurare client - ESP32 HA Kit WROOM / C3 / C6 / S3</title>
+<title>Ghid configurare client - ESP32 HA Kit / ESPHome / ESP32-C6 Super Mini</title>
 <style>
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
@@ -70,7 +70,7 @@
 
 <header class="header">
   <h1>ESP32 MQTT Home Assistant DIY Kit</h1>
-  <p>Ghid de instalare și configurare pentru ESP32-WROOM-32, ESP32-C3, ESP32-C6 și ESP32-S3</p>
+  <p>Ghid de instalare și configurare pentru firmware MQTT și ESPHome, inclusiv ESP32-C6 Super Mini</p>
   <div class="language">
     <a class="active" href="Ghid_Configurare_Client.html">Română</a>
     <a href="Client_Configuration_Guide.html">English</a>
@@ -80,14 +80,16 @@
 <main class="page">
   <section class="intro">
     <h2>Despre acest ghid</h2>
-    <p>Kitul folosește o placă ESP32 programată pentru conectare WiFi, dashboard web și integrare cu Home Assistant prin MQTT. Firmware-ul acceptă mai multe plăci și afișează numai perifericele detectate sau activate în configurația hardware.</p>
+    <p>Kitul poate folosi firmware-ul PlatformIO cu MQTT și dashboard web propriu sau firmware-ul alternativ ESPHome cu integrare directă prin Native API. Secțiunea ESPHome include procedura completă pentru ESP32-C6 Super Mini.</p>
     <div>
       <span class="badge">ESP32-WROOM-32</span>
       <span class="badge">ESP32-C3</span>
       <span class="badge">ESP32-C6</span>
+      <span class="badge">ESP32-C6 Super Mini</span>
       <span class="badge">ESP32-S3</span>
       <span class="badge green">WiFi 2.4 GHz</span>
       <span class="badge green">MQTT Discovery</span>
+      <span class="badge green">ESPHome Native API</span>
       <span class="badge amber">Configurare din browser</span>
     </div>
   </section>
@@ -97,6 +99,7 @@
     <div class="toc-links">
       <a href="#placi">Plăci suportate</a>
       <a href="#cerinte">Cerințe</a>
+      <a href="#esphome-c6">ESPHome C6 Super Mini</a>
       <a href="#pornire">Prima pornire</a>
       <a href="#wifi">WiFi și IP</a>
       <a href="#mqtt">MQTT</a>
@@ -128,6 +131,11 @@
           <p><strong>LED RGB onboard:</strong> GPIO8.</p>
         </article>
         <article class="board">
+          <h3>ESP32-C6 Super Mini</h3>
+          <p>Placă compactă ESP32-C6 cu USB-C și interfață USB Serial/JTAG integrată. Este suportată de profilele MQTT, Zigbee Router și ESPHome.</p>
+          <p><strong>USB:</strong> GPIO12/GPIO13 sunt rezervate. <strong>BOOT:</strong> GPIO9. <strong>RGB:</strong> GPIO8.</p>
+        </article>
+        <article class="board">
           <h3>ESP32-S3-DevKitC-1</h3>
           <p>Procesor Xtensa LX7 dual-core, USB nativ și instrucțiuni vectoriale pentru AI/DSP.</p>
           <p><strong>LED RGB onboard:</strong> GPIO48 pe revizia inițială sau GPIO38 pe v1.1. Dashboard-ul indică pinul folosit de firmware.</p>
@@ -135,7 +143,65 @@
       </div>
       <div class="box warn">
         <strong>Capabilități disponibile, dar neactivate în acest firmware</strong>
-        ESP32-C6 poate rula Zigbee/Thread, iar C6 și S3 pot fi folosite pentru Matter. Firmware-ul acestui kit folosește MQTT prin WiFi; Zigbee, Thread și Matter necesită alt firmware.
+        ESP32-C6 poate rula Zigbee/Thread, iar C6 și S3 pot fi folosite pentru Matter. Firmware-ul MQTT, firmware-ul Zigbee Router și firmware-ul ESPHome sunt imagini separate și nu pot rula simultan pe aceeași placă.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="esphome-c6">
+    <div class="section-head"><div class="num">E</div><h2>ESPHome pe ESP32-C6 Super Mini</h2></div>
+    <div class="section-body">
+      <p>Profilul <code>c6-supermini</code> folosește ESP-IDF și integrează direct DHT11, PIR, releul și OLED-ul în Home Assistant prin ESPHome Native API. Nu este necesar un broker MQTT.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Funcție</th><th>GPIO implicit</th></tr>
+          <tr><td>DHT11</td><td>GPIO0</td></tr>
+          <tr><td>PIR</td><td>GPIO1</td></tr>
+          <tr><td>Releu activ LOW</td><td>GPIO2</td></tr>
+          <tr><td>LED heartbeat extern</td><td>GPIO3</td></tr>
+          <tr><td>OLED SDA / SCL</td><td>GPIO20 / GPIO19</td></tr>
+        </table>
+      </div>
+
+      <h3>Instalare pe Linux</h3>
+      <ol class="steps">
+        <li>Conectați placa direct printr-un cablu USB-C de date. Portul apare de regulă ca <code>/dev/ttyACM0</code>.</li>
+        <li>În directorul proiectului rulați <code>cd esphome</code>, apoi <code>./setup.sh init</code>.</li>
+        <li>Validați profilul cu <code>./setup.sh check c6-supermini</code>.</li>
+        <li>Compilați și programați cu <code>./setup.sh run c6-supermini /dev/ttyACM0</code>.</li>
+      </ol>
+
+      <h3>Instalare pe Windows</h3>
+      <ol class="steps">
+        <li>Instalați Python 3.11 sau mai nou și identificați portul plăcii în Device Manager, de exemplu <code>COM5</code>.</li>
+        <li>În PowerShell, din directorul <code>esphome</code>, rulați <code>.\setup.ps1 init</code>.</li>
+        <li>Validați profilul cu <code>.\setup.ps1 check c6-supermini</code>.</li>
+        <li>Compilați și programați cu <code>.\setup.ps1 run c6-supermini COM5</code>. Din Command Prompt se poate folosi <code>setup.cmd run c6-supermini COM5</code>.</li>
+      </ol>
+
+      <div class="box warn">
+        <strong>Dacă upload-ul nu pornește</strong>
+        Țineți apăsat BOOT, apăsați și eliberați RESET, apoi eliberați BOOT și porniți imediat comanda de upload. După scriere, apăsați RESET. Nu conectați periferice la GPIO12 și GPIO13, liniile USB D-/D+.
+      </div>
+
+      <h3>Prima configurare WiFi</h3>
+      <ol class="steps">
+        <li>După pornire, conectați-vă la AP-ul <code>HA Kit C6 Super Mini</code> folosind valoarea <code>fallback_password</code> din <code>esphome/secrets.yaml</code>.</li>
+        <li>Deschideți <code>http://192.168.4.1</code>, selectați rețeaua WiFi de 2.4 GHz a clientului și introduceți parola acesteia.</li>
+        <li>După conectarea la router, placa este disponibilă la <code>esp32-ha-kit-c6-supermini.local</code> sau la IP-ul primit prin DHCP.</li>
+      </ol>
+
+      <h3>Adăugare în Home Assistant</h3>
+      <ol class="steps">
+        <li>Deschideți <strong>Setări &rarr; Dispozitive și servicii &rarr; Adaugă integrare &rarr; ESPHome</strong>.</li>
+        <li>Introduceți <code>esp32-ha-kit-c6-supermini.local</code> sau adresa IP.</li>
+        <li>Când este solicitată cheia de criptare, introduceți <code>api_encryption_key</code> din <code>secrets.yaml</code>.</li>
+        <li>Pagina web locală folosește separat <code>web_username</code> și <code>web_password</code>. Parola OTA este valoarea <code>ota_password</code>.</li>
+      </ol>
+
+      <div class="box info">
+        <strong>Predarea către client</strong>
+        Portalul captiv configurează numai WiFi-ul. Cheia API, parola OTA și autentificarea web sunt incluse la compilare. Pentru control exclusiv, clientul trebuie să adopte sau să recompileze placa în propriul ESPHome Device Builder cu credențiale proprii.
       </div>
     </div>
   </section>
@@ -234,10 +300,11 @@
           <tr><td>ESP32-WROOM-32</td><td>4</td><td>32</td><td>23</td><td>18</td><td>21</td><td>22</td><td>&mdash;</td></tr>
           <tr><td>ESP32-C3</td><td>4</td><td>3</td><td>7</td><td>10</td><td>6</td><td>5</td><td>8</td></tr>
           <tr><td>ESP32-C6</td><td>2</td><td>3</td><td>7</td><td>18</td><td>6</td><td>10</td><td>8</td></tr>
+          <tr><td>ESP32-C6 Super Mini</td><td>0</td><td>1</td><td>2</td><td>3</td><td>20</td><td>19</td><td>8*</td></tr>
           <tr><td>ESP32-S3</td><td>4</td><td>5</td><td>7</td><td>18</td><td>8</td><td>9</td><td>48/38*</td></tr>
         </table>
       </div>
-      <p><small>ESP32-WROOM-32 nu garantează un LED RGB adresabil onboard. * Pinul RGB al S3 depinde de revizia plăcii. Nu modificați manual pinul RGB rezervat de firmware.</small></p>
+      <p><small>ESP32-WROOM-32 nu garantează un LED RGB adresabil onboard. * Pinul RGB al S3 depinde de revizia plăcii; pe C6 Super Mini, GPIO8 este rezervat RGB-ului onboard și nu este LED-ul heartbeat ESPHome. Nu modificați manual pinii rezervați.</small></p>
       <div class="box info">
         <strong>Cum sunt detectate componentele?</strong>
         DHT11 apare după citiri valide, iar OLED-ul după confirmarea adresei I²C. PIR-ul și releul nu pot fi detectate electric în mod sigur; ele apar când sunt activate în tab-ul Hardware.
@@ -304,6 +371,8 @@
       <div class="box warn"><strong>Un card nu apare în Dashboard</strong>Verificați tab-ul Hardware. DHT și OLED trebuie să răspundă; PIR și releul trebuie să fie activate explicit.</div>
       <div class="box warn"><strong>WROOM nu apare ca port serial</strong>Folosiți un cablu USB de date și instalați driverul bridge-ului USB-to-UART al plăcii, de obicei CP210x sau CH340.</div>
       <div class="box warn"><strong>S3 nu apare ca port serial</strong>Folosiți un cablu USB de date și portul corect. În funcție de conexiune, placa poate apărea ca port USB nativ sau prin bridge USB-to-UART.</div>
+      <div class="box warn"><strong>C6 Super Mini nu se programează</strong>Folosiți un cablu USB-C de date și secvența BOOT + RESET descrisă în secțiunea ESPHome. Pe Linux verificați <code>/dev/ttyACM*</code>; pe Windows verificați portul COM din Device Manager.</div>
+      <div class="box warn"><strong>ESPHome nu apare în Home Assistant</strong>Verificați că placa și Home Assistant sunt în aceeași rețea, încercați IP-ul în loc de numele <code>.local</code> și folosiți exact valoarea <code>api_encryption_key</code>.</div>
       <div class="box info">
         <strong>Resetări separate</strong>
         Ștergerea din tab-ul WiFi elimină numai credențialele WiFi. Setările MQTT și configurația GPIO sunt gestionate separat în taburile MQTT și Hardware.
@@ -312,7 +381,7 @@
   </section>
 
   <div class="footer">
-    ESP32 MQTT Home Assistant DIY Kit &bull; Ghid client RO &bull; Versiunea 2.0 &bull; Iunie 2026
+    ESP32 MQTT Home Assistant DIY Kit &bull; Ghid client RO &bull; Versiunea 3.0 &bull; Iunie 2026
   </div>
 </main>
 </body>

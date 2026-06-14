@@ -2,6 +2,11 @@
 
 > Developed by **Automatic House Systems**
 
+[English version](README_EN.md)
+
+[Ghid client HTML](Ghid_Configurare_Client.html) |
+[Ghid client PDF](Ghid_Configurare_Client.pdf)
+
 Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și controlul unui releu SSR, cu integrare nativă în **Home Assistant** prin **MQTT Auto-Discovery** și dashboard web configurat direct din browser.
 
 ---
@@ -325,6 +330,9 @@ Profile disponibile:
 | `c6-supermini` | ESP32-C6 Super Mini |
 | `s3` | ESP32-S3-DevKitC-1 |
 
+Procedura completă ESPHome pentru C6 Super Mini este inclusă în
+[ghidul client](Ghid_Configurare_Client.html#esphome-c6).
+
 Setup inițial:
 
 ```bash
@@ -478,6 +486,7 @@ ESP32 MQTT Home Assistant DIY Kit/
 │       ├── WiFiWebManager.h
 │       └── WiFiWebManager.cpp
 ├── platformio.ini               # Configurare build PlatformIO
+├── README_EN.md                 # Documentația completă în limba engleză
 ├── Ghid_Configurare_Client.html # Ghid client în română (printabil)
 ├── Client_Configuration_Guide.html # Client guide in English (printable)
 ├── Ghid_Configurare_Client.pdf  # Ghid PDF generat

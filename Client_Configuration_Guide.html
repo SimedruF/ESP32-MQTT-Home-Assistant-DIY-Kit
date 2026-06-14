@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Client Configuration Guide - ESP32 HA Kit WROOM / C3 / C6 / S3</title>
+<title>Client Configuration Guide - ESP32 HA Kit / ESPHome / ESP32-C6 Super Mini</title>
 <style>
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
@@ -70,7 +70,7 @@
 
 <header class="header">
   <h1>ESP32 MQTT Home Assistant DIY Kit</h1>
-  <p>Installation and configuration guide for ESP32-WROOM-32, ESP32-C3, ESP32-C6 and ESP32-S3</p>
+  <p>Installation and configuration guide for MQTT and ESPHome firmware, including ESP32-C6 Super Mini</p>
   <div class="language">
     <a href="Ghid_Configurare_Client.html">Română</a>
     <a class="active" href="Client_Configuration_Guide.html">English</a>
@@ -80,18 +80,16 @@
 <main class="page">
   <section class="intro">
     <h2>About this guide</h2>
-    <p>The kit uses a programmed ESP32 board with Wi-Fi connectivity, an embedded web dashboard and Home Assistant integration through MQTT. The firmware supports several board families and displays only peripherals that are detected or enabled in the hardware configuration.</p>
-    <div class="box info">
-      <strong>Dashboard language</strong>
-      The current firmware dashboard is in Romanian. This guide includes the exact Romanian button label in parentheses whenever it is needed.
-    </div>
+    <p>The kit can run either the PlatformIO firmware with MQTT and its own web dashboard, or the alternative ESPHome firmware with direct Native API integration. The ESPHome section provides the complete ESP32-C6 Super Mini procedure.</p>
     <div>
       <span class="badge">ESP32-WROOM-32</span>
       <span class="badge">ESP32-C3</span>
       <span class="badge">ESP32-C6</span>
+      <span class="badge">ESP32-C6 Super Mini</span>
       <span class="badge">ESP32-S3</span>
       <span class="badge green">2.4 GHz Wi-Fi</span>
       <span class="badge green">MQTT Discovery</span>
+      <span class="badge green">ESPHome Native API</span>
       <span class="badge amber">Browser configuration</span>
     </div>
   </section>
@@ -101,6 +99,7 @@
     <div class="toc-links">
       <a href="#boards">Supported boards</a>
       <a href="#requirements">Requirements</a>
+      <a href="#esphome-c6">ESPHome C6 Super Mini</a>
       <a href="#startup">First startup</a>
       <a href="#wifi">Wi-Fi and IP</a>
       <a href="#mqtt">MQTT</a>
@@ -132,6 +131,11 @@
           <p><strong>Onboard RGB LED:</strong> GPIO8.</p>
         </article>
         <article class="board">
+          <h3>ESP32-C6 Super Mini</h3>
+          <p>Compact ESP32-C6 board with USB-C and an integrated USB Serial/JTAG interface. It is supported by the MQTT, Zigbee Router and ESPHome profiles.</p>
+          <p><strong>USB:</strong> GPIO12/GPIO13 are reserved. <strong>BOOT:</strong> GPIO9. <strong>RGB:</strong> GPIO8.</p>
+        </article>
+        <article class="board">
           <h3>ESP32-S3-DevKitC-1</h3>
           <p>Dual-core Xtensa LX7 processor with native USB and vector instructions for AI/DSP workloads.</p>
           <p><strong>Onboard RGB LED:</strong> GPIO48 on the initial revision or GPIO38 on v1.1. The dashboard reports the pin used by the firmware.</p>
@@ -139,7 +143,65 @@
       </div>
       <div class="box warn">
         <strong>Available hardware capabilities not enabled by this firmware</strong>
-        ESP32-C6 can run Zigbee/Thread, while C6 and S3 can be used for Matter. This kit firmware uses MQTT over Wi-Fi; Zigbee, Thread and Matter require different firmware.
+        ESP32-C6 can run Zigbee/Thread, while C6 and S3 can be used for Matter. The MQTT firmware, Zigbee Router firmware and ESPHome firmware are separate images and cannot run simultaneously on the same board.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="esphome-c6">
+    <div class="section-head"><div class="num">E</div><h2>ESPHome on ESP32-C6 Super Mini</h2></div>
+    <div class="section-body">
+      <p>The <code>c6-supermini</code> profile uses ESP-IDF and integrates the DHT11, PIR sensor, relay and OLED directly with Home Assistant through the ESPHome Native API. An MQTT broker is not required.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Function</th><th>Default GPIO</th></tr>
+          <tr><td>DHT11</td><td>GPIO0</td></tr>
+          <tr><td>PIR</td><td>GPIO1</td></tr>
+          <tr><td>Active-LOW relay</td><td>GPIO2</td></tr>
+          <tr><td>External heartbeat LED</td><td>GPIO3</td></tr>
+          <tr><td>OLED SDA / SCL</td><td>GPIO20 / GPIO19</td></tr>
+        </table>
+      </div>
+
+      <h3>Linux installation</h3>
+      <ol class="steps">
+        <li>Connect the board directly with a USB-C data cable. It normally appears as <code>/dev/ttyACM0</code>.</li>
+        <li>From the project directory, run <code>cd esphome</code>, followed by <code>./setup.sh init</code>.</li>
+        <li>Validate the profile with <code>./setup.sh check c6-supermini</code>.</li>
+        <li>Compile and flash it with <code>./setup.sh run c6-supermini /dev/ttyACM0</code>.</li>
+      </ol>
+
+      <h3>Windows installation</h3>
+      <ol class="steps">
+        <li>Install Python 3.11 or newer and find the board port in Device Manager, for example <code>COM5</code>.</li>
+        <li>Open PowerShell in the <code>esphome</code> directory and run <code>.\setup.ps1 init</code>.</li>
+        <li>Validate the profile with <code>.\setup.ps1 check c6-supermini</code>.</li>
+        <li>Compile and flash it with <code>.\setup.ps1 run c6-supermini COM5</code>. From Command Prompt, use <code>setup.cmd run c6-supermini COM5</code>.</li>
+      </ol>
+
+      <div class="box warn">
+        <strong>If flashing does not start</strong>
+        Hold BOOT, press and release RESET, release BOOT, then immediately start the upload command. Press RESET after flashing. Do not attach peripherals to GPIO12 or GPIO13 because they are the USB D-/D+ lines.
+      </div>
+
+      <h3>Initial Wi-Fi setup</h3>
+      <ol class="steps">
+        <li>After boot, connect to the <code>HA Kit C6 Super Mini</code> access point using the <code>fallback_password</code> value from <code>esphome/secrets.yaml</code>.</li>
+        <li>Open <code>http://192.168.4.1</code>, select the customer's 2.4 GHz Wi-Fi network and enter its password.</li>
+        <li>After the board joins the router, it is available at <code>esp32-ha-kit-c6-supermini.local</code> or its DHCP address.</li>
+      </ol>
+
+      <h3>Add the device to Home Assistant</h3>
+      <ol class="steps">
+        <li>Open <strong>Settings &rarr; Devices &amp; services &rarr; Add integration &rarr; ESPHome</strong>.</li>
+        <li>Enter <code>esp32-ha-kit-c6-supermini.local</code> or the IP address.</li>
+        <li>When prompted for the encryption key, enter <code>api_encryption_key</code> from <code>secrets.yaml</code>.</li>
+        <li>The local web page separately uses <code>web_username</code> and <code>web_password</code>. The OTA password is stored as <code>ota_password</code>.</li>
+      </ol>
+
+      <div class="box info">
+        <strong>Customer handover</strong>
+        The captive portal configures Wi-Fi only. The API key, OTA password and web authentication are compiled into the firmware. For exclusive control, the customer must adopt or rebuild the board in their own ESPHome Device Builder with their own credentials.
       </div>
     </div>
   </section>
@@ -238,10 +300,11 @@
           <tr><td>ESP32-WROOM-32</td><td>4</td><td>32</td><td>23</td><td>18</td><td>21</td><td>22</td><td>&mdash;</td></tr>
           <tr><td>ESP32-C3</td><td>4</td><td>3</td><td>7</td><td>10</td><td>6</td><td>5</td><td>8</td></tr>
           <tr><td>ESP32-C6</td><td>2</td><td>3</td><td>7</td><td>18</td><td>6</td><td>10</td><td>8</td></tr>
+          <tr><td>ESP32-C6 Super Mini</td><td>0</td><td>1</td><td>2</td><td>3</td><td>20</td><td>19</td><td>8*</td></tr>
           <tr><td>ESP32-S3</td><td>4</td><td>5</td><td>7</td><td>18</td><td>8</td><td>9</td><td>48/38*</td></tr>
         </table>
       </div>
-      <p><small>ESP32-WROOM-32 does not guarantee an addressable onboard RGB LED. * The S3 RGB pin depends on the board revision. Do not manually assign the RGB pin reserved by the firmware.</small></p>
+      <p><small>ESP32-WROOM-32 does not guarantee an addressable onboard RGB LED. * The S3 RGB pin depends on the board revision; on C6 Super Mini, GPIO8 is reserved for the onboard RGB LED and is not the ESPHome heartbeat LED. Do not manually assign reserved pins.</small></p>
       <div class="box info">
         <strong>How are components detected?</strong>
         DHT11 is shown after valid readings and the OLED after a successful I2C response. PIR sensors and relays cannot be reliably identified electrically; they are shown when enabled in the Hardware tab.
@@ -308,6 +371,8 @@
       <div class="box warn"><strong>A dashboard card is missing</strong>Check the Hardware tab. DHT and OLED must respond; PIR and relay must be explicitly enabled.</div>
       <div class="box warn"><strong>The WROOM serial port is missing</strong>Use a USB data cable and install the driver for the board's USB-to-UART bridge, usually CP210x or CH340.</div>
       <div class="box warn"><strong>The S3 serial port is missing</strong>Use a USB data cable and the correct port. Depending on the connection, the board may appear through native USB or a USB-to-UART bridge.</div>
+      <div class="box warn"><strong>C6 Super Mini does not flash</strong>Use a USB-C data cable and the BOOT + RESET sequence described in the ESPHome section. On Linux check <code>/dev/ttyACM*</code>; on Windows check Device Manager for the COM port.</div>
+      <div class="box warn"><strong>ESPHome is not discovered by Home Assistant</strong>Verify that the board and Home Assistant are on the same network, try the IP address instead of the <code>.local</code> name, and enter the exact <code>api_encryption_key</code> value.</div>
       <div class="box info">
         <strong>Separate reset actions</strong>
         Deleting data from the WiFi tab removes Wi-Fi credentials only. MQTT and GPIO settings are managed separately in the MQTT and Hardware tabs.
@@ -316,7 +381,7 @@
   </section>
 
   <div class="footer">
-    ESP32 MQTT Home Assistant DIY Kit &bull; Client Guide EN &bull; Version 2.0 &bull; June 2026
+    ESP32 MQTT Home Assistant DIY Kit &bull; Client Guide EN &bull; Version 3.0 &bull; June 2026
   </div>
 </main>
 </body>
