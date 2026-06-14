@@ -81,7 +81,11 @@ const char* buildProfileName()
 
 HardwareConfig HardwareConfigStore::defaults() const
 {
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(BOARD_LILYGO_T_ZIGBEE)
+  return {4, 5, 6, 7, 8, 1, true, 0x3C};
+#elif defined(BOARD_ESP32_C6_SUPERMINI)
+  return {0, 1, 2, 3, 20, 19, true, 0x3C};
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
   return {4, 5, 7, 18, 8, 9, true, 0x3C};
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   return {2, 3, 7, 18, 6, 10, true, 0x3C};
@@ -152,7 +156,11 @@ bool isReservedPin(int pin)
   if (pin == PIN_RGB_LED) return true;
 #endif
 
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(BOARD_LILYGO_T_ZIGBEE)
+  return pin == 0 || pin == 3 || (pin >= 9 && pin <= 19);
+#elif defined(BOARD_ESP32_C6_SUPERMINI)
+  return pin == 12 || pin == 13 || (pin >= 24 && pin <= 30);
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
   return pin >= 26 && pin <= 34;
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   return pin == 14 || (pin >= 24 && pin <= 30);
@@ -171,7 +179,16 @@ const char* pinRestriction(int pin)
   if (pin == PIN_RGB_LED) return "LED RGB onboard";
 #endif
 
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(BOARD_LILYGO_T_ZIGBEE)
+  if (pin == 0) return "alimentare coprocesor Zigbee TLSR8258";
+  if (pin == 3) return "LED albastru onboard";
+  if (pin == 9 || pin == 10) return "neexpus pe LILYGO T-ZIGBEE";
+  if (pin >= 11 && pin <= 17) return "rezervat pentru memoria flash";
+  if (pin == 18 || pin == 19) return "UART intern catre TLSR8258";
+#elif defined(BOARD_ESP32_C6_SUPERMINI)
+  if (pin == 12 || pin == 13) return "rezervat pentru USB Serial/JTAG";
+  if (pin >= 24 && pin <= 30) return "rezervat pentru memoria flash";
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
   if (pin >= 26 && pin <= 32) return "rezervat pentru memoria flash";
   if (pin == 33 || pin == 34) return "neexpus pe ESP32-S3-DevKitC-1";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
@@ -192,7 +209,15 @@ const char* pinWarning(int pin)
   if (pin == PIN_RGB_LED) return "";
 #endif
 
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(BOARD_LILYGO_T_ZIGBEE)
+  if (pin == 2) return "buton USER onboard si pin de boot/strapping";
+  if (pin == 8) return "pin de boot/strapping";
+  if (pin == 20 || pin == 21) return "UART0 folosit pentru programare/log";
+#elif defined(BOARD_ESP32_C6_SUPERMINI)
+  if (pin == 9) return "buton BOOT onboard si pin de boot/strapping";
+  if (pin == 15) return "LED albastru onboard si pin de boot/strapping";
+  if (pin == 4 || pin == 5) return "pin de boot/strapping";
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
   if (pin == 19 || pin == 20) return "USB OTG/JTAG implicit";
   if (pin == 43 || pin == 44) return "UART0 folosit pentru programare/log";
   if (pin >= 35 && pin <= 37) return "indisponibil pe modulele cu flash/PSRAM Octal";

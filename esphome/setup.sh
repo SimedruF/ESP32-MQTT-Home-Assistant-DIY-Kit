@@ -16,7 +16,9 @@ export ESPHOME_BUILD_PATH="${BUILD_ROOT}"
 readonly -A CONFIGS=(
   [wroom]="esp32-ha-kit-wroom.yaml"
   [c3]="esp32-ha-kit-c3.yaml"
+  [t-zigbee]="esp32-ha-kit-t-zigbee.yaml"
   [c6]="esp32-ha-kit-c6.yaml"
+  [c6-supermini]="esp32-ha-kit-c6-supermini.yaml"
   [s3]="esp32-ha-kit-s3.yaml"
 )
 
@@ -38,12 +40,12 @@ usage() {
 Utilizare:
   ./setup.sh init
   ./setup.sh secrets [--force]
-  ./setup.sh check [wroom|c3|c6|s3|all]
-  ./setup.sh compile <wroom|c3|c6|s3>
-  ./setup.sh upload <wroom|c3|c6|s3> [port-sau-adresa]
-  ./setup.sh run <wroom|c3|c6|s3> [port-sau-adresa]
-  ./setup.sh logs <wroom|c3|c6|s3> [port-sau-adresa]
-  ./setup.sh clean [wroom|c3|c6|s3|all]
+  ./setup.sh check [wroom|c3|t-zigbee|c6|c6-supermini|s3|all]
+  ./setup.sh compile <wroom|c3|t-zigbee|c6|c6-supermini|s3>
+  ./setup.sh upload <wroom|c3|t-zigbee|c6|c6-supermini|s3> [port-sau-adresa]
+  ./setup.sh run <wroom|c3|t-zigbee|c6|c6-supermini|s3> [port-sau-adresa]
+  ./setup.sh logs <wroom|c3|t-zigbee|c6|c6-supermini|s3> [port-sau-adresa]
+  ./setup.sh clean [wroom|c3|t-zigbee|c6|c6-supermini|s3|all]
   ./setup.sh version
 
 Comenzi:
@@ -65,6 +67,7 @@ Exemple:
   ./setup.sh init
   ./setup.sh check all
   ./setup.sh run wroom /dev/ttyUSB0
+  ./setup.sh run t-zigbee /dev/ttyUSB0
   ./setup.sh upload s3 /dev/ttyACM0
   ./setup.sh logs c3 esp32-ha-kit-c3.local
 EOF
@@ -233,7 +236,7 @@ resolve_config() {
 
   [[ -n "${profile}" ]] || die "Lipseste profilul placii."
   [[ -n "${CONFIGS[${profile}]:-}" ]] ||
-    die "Profil necunoscut: ${profile}. Foloseste wroom, c3, c6 sau s3."
+    die "Profil necunoscut: ${profile}. Foloseste wroom, c3, t-zigbee, c6, c6-supermini sau s3."
 
   printf '%s/%s\n' "${SCRIPT_DIR}" "${CONFIGS[${profile}]}"
 }
@@ -245,7 +248,7 @@ run_for_profiles() {
   local config
 
   if [[ "${requested}" == "all" ]]; then
-    for profile in wroom c3 c6 s3; do
+    for profile in wroom c3 t-zigbee c6 c6-supermini s3; do
       config="$(resolve_config "${profile}")"
       info "${action}: ${profile}"
       "${ESPHOME_BIN}" "${action}" "${config}"

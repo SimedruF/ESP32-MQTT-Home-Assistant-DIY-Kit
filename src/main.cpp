@@ -5,7 +5,9 @@
   - ESP32-WROOM-32 / ESP32 Dev Module
   - ESP32-C3-DevKitM-1
   - ESP32-C6-DevKitC-1
+  - ESP32-C6 Super Mini
   - ESP32-S3-DevKitC-1
+  - LILYGO T-ZIGBEE v1.2 (ESP32-C3 + TLSR8258)
 
   Pinii pentru DHT11, PIR, releu, OLED si heartbeat sunt configurabili
   din interfata web si persistati in NVS.
@@ -67,7 +69,147 @@ static const char* DISC_RELAY  = "homeassistant/switch/esp32kit/relay/config";
 // NVS pentru setarile MQTT
 Preferences mqttPrefs;
 Preferences uiPrefs;
+Preferences communicationPrefs;
 String g_uiLanguage = "ro";
+String g_selectedCommunication = "wifi_mqtt";
+String g_zigbeeCoordinator = "generic";
+String g_zigbeeCoordinatorHost = "";
+String g_zigbeePairingMode = "auto";
+
+bool hasNativeIeee802154()
+{
+#if defined(SOC_IEEE802154_SUPPORTED) && SOC_IEEE802154_SUPPORTED
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool hasExternalZigbeeRadio()
+{
+#if defined(ZIGBEE_COPROCESSOR_TLSR8258)
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool hasZigbeeCapability()
+{
+  return hasNativeIeee802154() || hasExternalZigbeeRadio();
+}
+
+const char* activeCommunicationMode()
+{
+#if defined(IOT_PROTOCOL_ACTIVE_THREAD)
+  return "thread";
+#elif defined(ZIGBEE_MODE_ED) || defined(ZIGBEE_MODE_ZCZR)
+  return "zigbee";
+#else
+  return "wifi_mqtt";
+#endif
+}
+
+bool isValidCommunicationMode(const String& mode)
+{
+  if (mode == "wifi_mqtt") return true;
+  if (mode == "zigbee") return hasZigbeeCapability();
+  if (mode == "thread") return hasNativeIeee802154();
+  return false;
+}
+
+bool isValidZigbeeCoordinator(const String& coordinator)
+{
+  return coordinator == "generic" ||
+         coordinator == "zha" ||
+         coordinator == "zigbee2mqtt" ||
+         coordinator == "zbbridge_u";
+}
+
+bool isValidZigbeePairingMode(const String& pairingMode)
+{
+  return pairingMode == "auto" || pairingMode == "force_new";
+}
+
+bool isValidCoordinatorHost(const String& host)
+{
+  if (host.length() > 96) return false;
+  for (size_t i = 0; i < host.length(); ++i)
+  {
+    const char c = host[i];
+    if (!isAlphaNumeric(c) && c != '.' && c != '-' && c != ':' &&
+        c != '[' && c != ']')
+      return false;
+  }
+  return true;
+}
+
+void loadCommunicationConfig()
+{
+  if (!communicationPrefs.begin("iot_radio", false))
+  {
+    serialLog.println("[IoT] NVS indisponibil; se foloseste MQTT prin WiFi");
+    return;
+  }
+
+  const String storedMode = communicationPrefs.getString("protocol", "wifi_mqtt");
+  const String storedCoordinator =
+    communicationPrefs.getString("zb_coord", "generic");
+  const String storedCoordinatorHost =
+    communicationPrefs.getString("zb_host", "");
+  const String storedPairingMode =
+    communicationPrefs.getString("zb_pair", "auto");
+  communicationPrefs.end();
+  g_selectedCommunication = isValidCommunicationMode(storedMode)
+    ? storedMode
+    : "wifi_mqtt";
+  g_zigbeeCoordinator = isValidZigbeeCoordinator(storedCoordinator)
+    ? storedCoordinator
+    : "generic";
+  g_zigbeeCoordinatorHost = isValidCoordinatorHost(storedCoordinatorHost)
+    ? storedCoordinatorHost
+    : "";
+  g_zigbeePairingMode = isValidZigbeePairingMode(storedPairingMode)
+    ? storedPairingMode
+    : "auto";
+
+  serialLog.printf("[IoT] Mod selectat: %s | activ: %s | coordinator: %s%s%s | pairing: %s\n",
+                   g_selectedCommunication.c_str(), activeCommunicationMode(),
+                   g_zigbeeCoordinator.c_str(),
+                   g_zigbeeCoordinatorHost.length() ? " @ " : "",
+                   g_zigbeeCoordinatorHost.c_str(),
+                   g_zigbeePairingMode.c_str());
+}
+
+bool saveCommunicationConfig(const String& mode, const String& coordinator,
+                             const String& coordinatorHost,
+                             const String& pairingMode)
+{
+  if (!isValidCommunicationMode(mode) ||
+      !isValidZigbeeCoordinator(coordinator) ||
+      !isValidCoordinatorHost(coordinatorHost) ||
+      !isValidZigbeePairingMode(pairingMode))
+    return false;
+
+  if (!communicationPrefs.begin("iot_radio", false)) return false;
+  const bool protocolSaved = communicationPrefs.putString("protocol", mode) > 0;
+  const bool coordinatorSaved =
+    communicationPrefs.putString("zb_coord", coordinator) > 0;
+  const bool hostSaved = coordinatorHost.length() == 0
+    ? communicationPrefs.remove("zb_host") || !communicationPrefs.isKey("zb_host")
+    : communicationPrefs.putString("zb_host", coordinatorHost) > 0;
+  const bool pairingSaved =
+    communicationPrefs.putString("zb_pair", pairingMode) > 0;
+  communicationPrefs.end();
+  if (!protocolSaved || !coordinatorSaved || !hostSaved || !pairingSaved)
+    return false;
+
+  g_selectedCommunication = mode;
+  g_zigbeeCoordinator = coordinator;
+  g_zigbeeCoordinatorHost = coordinatorHost;
+  g_zigbeePairingMode = pairingMode;
+  return true;
+}
 
 void loadUiConfig()
 {
@@ -620,6 +762,101 @@ void handleUiConfigPost(WebServer& server)
               String(F("{\"ok\":true,\"language\":\"")) + g_uiLanguage + F("\"}"));
 }
 
+void handleCommunicationConfigGet(WebServer& server)
+{
+  const bool zigbeeCapable = hasZigbeeCapability();
+  const bool threadCapable = hasNativeIeee802154();
+  const char* activeMode = activeCommunicationMode();
+
+  String json;
+  json.reserve(240);
+  json = F("{\"visible\":");
+  json += zigbeeCapable ? F("true") : F("false");
+  json += F(",\"zigbee_capable\":");
+  json += zigbeeCapable ? F("true") : F("false");
+  json += F(",\"thread_capable\":");
+  json += threadCapable ? F("true") : F("false");
+  json += F(",\"selected_protocol\":\"");
+  json += g_selectedCommunication;
+  json += F("\",\"active_protocol\":\"");
+  json += activeMode;
+  json += F("\",\"zigbee_coordinator\":\"");
+  json += g_zigbeeCoordinator;
+  json += F("\",\"zigbee_coordinator_host\":\"");
+  json += g_zigbeeCoordinatorHost;
+  json += F("\",\"zigbee_pairing_mode\":\"");
+  json += g_zigbeePairingMode;
+  json += F("\",\"zbbridge_custom_device_supported\":false");
+  json += F(",\"firmware_change_required\":");
+  json += g_selectedCommunication == activeMode ? F("false") : F("true");
+  json += '}';
+
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", json);
+}
+
+void handleCommunicationConfigPost(WebServer& server)
+{
+  if (!hasZigbeeCapability())
+  {
+    server.send(404, "application/json",
+                "{\"ok\":false,\"error\":\"configuratia radio nu este disponibila pentru aceasta placa\"}");
+    return;
+  }
+
+  const String mode = server.arg("protocol");
+  const String coordinator = server.hasArg("zigbee_coordinator")
+    ? server.arg("zigbee_coordinator")
+    : g_zigbeeCoordinator;
+  String coordinatorHost = server.hasArg("zigbee_coordinator_host")
+    ? server.arg("zigbee_coordinator_host")
+    : g_zigbeeCoordinatorHost;
+  const String pairingMode = server.hasArg("zigbee_pairing_mode")
+    ? server.arg("zigbee_pairing_mode")
+    : g_zigbeePairingMode;
+  coordinatorHost.trim();
+
+  if (!isValidCommunicationMode(mode) ||
+      !isValidZigbeeCoordinator(coordinator) ||
+      !isValidCoordinatorHost(coordinatorHost) ||
+      !isValidZigbeePairingMode(pairingMode))
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"configuratie Zigbee invalida sau indisponibila\"}");
+    return;
+  }
+
+  if (!saveCommunicationConfig(mode, coordinator, coordinatorHost, pairingMode))
+  {
+    server.send(500, "application/json",
+                "{\"ok\":false,\"error\":\"salvarea configuratiei in NVS a esuat\"}");
+    return;
+  }
+
+  const bool firmwareChangeRequired = mode != activeCommunicationMode();
+  String json = F("{\"ok\":true,\"selected_protocol\":\"");
+  json += g_selectedCommunication;
+  json += F("\",\"active_protocol\":\"");
+  json += activeCommunicationMode();
+  json += F("\",\"zigbee_coordinator\":\"");
+  json += g_zigbeeCoordinator;
+  json += F("\",\"zigbee_coordinator_host\":\"");
+  json += g_zigbeeCoordinatorHost;
+  json += F("\",\"zigbee_pairing_mode\":\"");
+  json += g_zigbeePairingMode;
+  json += F("\",\"firmware_change_required\":");
+  json += firmwareChangeRequired ? F("true") : F("false");
+  json += '}';
+  serialLog.printf("[IoT] Configuratie salvata: %s, coordinator %s%s%s, pairing %s%s\n",
+                   g_selectedCommunication.c_str(),
+                   g_zigbeeCoordinator.c_str(),
+                   g_zigbeeCoordinatorHost.length() ? " @ " : "",
+                   g_zigbeeCoordinatorHost.c_str(),
+                   g_zigbeePairingMode.c_str(),
+                   firmwareChangeRequired ? " (necesita firmware compatibil)" : "");
+  server.send(200, "application/json", json);
+}
+
 void handleData(WebServer& server)
 {
   float temp, hum;
@@ -850,13 +1087,12 @@ void handleBoardInfo(WebServer& server)
   const bool wifiCapable = false;
 #endif
 
-#if defined(SOC_IEEE802154_SUPPORTED) && SOC_IEEE802154_SUPPORTED
-  const bool ieee802154Capable = true;
-#else
-  const bool ieee802154Capable = false;
-#endif
+  const bool ieee802154Capable = hasNativeIeee802154();
+  const bool externalZigbeeCapable = hasExternalZigbeeRadio();
 
-#if defined(ZIGBEE_MODE_ED)
+#if defined(ZIGBEE_COPROCESSOR_TLSR8258)
+  const char* zigbeeFirmwareMode = "TLSR8258 extern; interfata HCI inactiva";
+#elif defined(ZIGBEE_MODE_ED)
   const char* zigbeeFirmwareMode = "End Device";
 #elif defined(ZIGBEE_MODE_ZCZR)
   const char* zigbeeFirmwareMode = "Coordinator / Router";
@@ -890,9 +1126,13 @@ void handleBoardInfo(WebServer& server)
   json += wifiCapable ? "true" : "false";
   json += ",\"ieee802154_capable\":";
   json += ieee802154Capable ? "true" : "false";
+  json += ",\"zigbee_external\":";
+  json += externalZigbeeCapable ? "true" : "false";
   json += ",\"zigbee_capable\":";
-  json += ieee802154Capable ? "true" : "false";
+  json += (ieee802154Capable || externalZigbeeCapable) ? "true" : "false";
   json += ",\"zigbee_firmware_mode\":\"" + String(zigbeeFirmwareMode) + "\",";
+  json += "\"communication_selected\":\"" + g_selectedCommunication + "\",";
+  json += "\"communication_active\":\"" + String(activeCommunicationMode()) + "\",";
   json += "\"thread_capable\":";
   json += ieee802154Capable ? "true" : "false";
   json += ",\"matter_capable\":";
@@ -1035,7 +1275,15 @@ void setup()
   delay(300);
   serialLog.println("\n=== ESP32 MQTT Home Assistant DIY Kit ===");
 
+#if defined(ZIGBEE_COPROCESSOR_POWER_PIN)
+  pinMode(ZIGBEE_COPROCESSOR_POWER_PIN, OUTPUT);
+  digitalWrite(ZIGBEE_COPROCESSOR_POWER_PIN, HIGH);
+  serialLog.printf("[Zigbee] TLSR8258 alimentat prin GPIO%d; HCI nu este activ in acest firmware\n",
+                   ZIGBEE_COPROCESSOR_POWER_PIN);
+#endif
+
   loadUiConfig();
+  loadCommunicationConfig();
   g_hardware = hardwareStore.load();
   serialLog.println("[HW] Target: " + String(targetName()) + " / profil: " + buildProfileName());
 
@@ -1136,6 +1384,8 @@ void setup()
   wifiManager.on("/",                    HTTP_GET,  handleRoot);
   wifiManager.on("/api/ui_config",       HTTP_GET,  handleUiConfigGet);
   wifiManager.on("/api/ui_config",       HTTP_POST, handleUiConfigPost);
+  wifiManager.on("/api/communication_config", HTTP_GET,  handleCommunicationConfigGet);
+  wifiManager.on("/api/communication_config", HTTP_POST, handleCommunicationConfigPost);
   wifiManager.on("/data",                HTTP_GET,  handleData);
   wifiManager.on("/api/status",          HTTP_GET,  handleApiStatus);
   wifiManager.on("/api/relay",           HTTP_GET,  handleApiRelay);

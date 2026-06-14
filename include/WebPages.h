@@ -158,6 +158,8 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
     <button class="tab-btn active" onclick="showTab('monitor',this)">&#128202; Dashboard</button>
     <button class="tab-btn" onclick="showTab('mqtt',this)">&#128268; MQTT</button>
     <button class="tab-btn" onclick="showTab('wifi',this)">&#128225; WiFi</button>
+    <button class="tab-btn" id="communicationTabButton" style="display:none"
+            onclick="showTab('communication',this)">&#128225; Comunicare IoT</button>
     <button class="tab-btn" onclick="showTab('hardware',this)">&#128295; Hardware</button>
     <button class="tab-btn" onclick="showTab('serial',this)">&#9000; Serial Log</button>
     <button class="tab-btn" onclick="showTab('board',this)">&#128203; Info Placa</button>
@@ -317,6 +319,77 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
     </div>
   </div>
 
+  <!-- IOT COMMUNICATION TAB: enabled only for Zigbee-capable boards -->
+  <div id="communication-tab" class="tab">
+    <div class="mqtt-bar mqtt-unknown" id="communicationStatus">
+      Se citeste configuratia radio...
+    </div>
+
+    <h3 style="margin-bottom:14px;color:#1e293b">Protocol de comunicare IoT</h3>
+    <p style="margin-bottom:16px;color:#64748b;font-size:.9em">
+      Selectia este salvata in memoria NVS. Modurile Zigbee si Thread necesita un firmware
+      construit explicit cu stack-ul protocolului ales; starea de mai sus indica modul activ real.
+    </p>
+
+    <div class="form-group">
+      <label class="form-label" for="communicationProtocol">Protocol selectat</label>
+      <select id="communicationProtocol" class="form-input" onchange="updateCoordinatorVisibility()">
+        <option value="wifi_mqtt">MQTT prin WiFi</option>
+        <option value="zigbee">Zigbee</option>
+        <option value="thread">Thread</option>
+      </select>
+    </div>
+
+    <div id="zigbeeCoordinatorConfig" style="display:none">
+      <div class="form-group">
+        <label class="form-label" for="zigbeeCoordinator">Coordinator / gateway Zigbee</label>
+        <select id="zigbeeCoordinator" class="form-input" onchange="renderCoordinatorHelp()">
+          <option value="generic">Coordinator Zigbee generic</option>
+          <option value="zha">Home Assistant ZHA</option>
+          <option value="zigbee2mqtt">Zigbee2MQTT</option>
+          <option value="zbbridge_u">SONOFF ZBBridge-U (firmware original)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="zigbeeCoordinatorHost">Adresa portalului coordinatorului</label>
+        <input type="text" id="zigbeeCoordinatorHost" class="form-input"
+               placeholder="ex. 192.168.1.6 sau zbbridgeu.local">
+        <small style="color:#64748b;font-size:.82em">
+          Adresa este folosita numai pentru deschiderea portalului de administrare, nu pentru conexiunea radio Zigbee.
+        </small>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="zigbeePairingMode">Mod pairing Zigbee</label>
+        <select id="zigbeePairingMode" class="form-input">
+          <option value="auto">Automat: conectare sau rejoin la reteaua salvata</option>
+          <option value="force_new">Retea noua: sterge asocierea Zigbee la urmatoarea pornire</option>
+        </select>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn" style="background:#0f766e;color:#fff" onclick="openCoordinatorPortal()">
+          Deschide portalul coordinatorului
+        </button>
+      </div>
+      <div class="info-box" id="zigbeeCoordinatorHelp" style="margin-top:14px"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveCommunicationConfig()">&#128190; Salveaza selectia</button>
+      <button class="btn" style="background:#64748b;color:#fff;flex:0 0 auto"
+              onclick="loadCommunicationConfig()">&#8635;</button>
+    </div>
+    <div class="msg-box" id="communicationMsg"></div>
+
+    <div class="info-box" style="margin-top:18px">
+      <strong>&#8505; Cerinte:</strong>
+      <ul>
+        <li><strong>Zigbee:</strong> necesita un coordinator/gateway Zigbee aflat in modul de asociere.</li>
+        <li><strong>Thread:</strong> necesita o retea Thread, credencialele ei si un Thread Border Router.</li>
+        <li>Pentru control direct din Home Assistant prin Thread este necesar Matter over Thread.</li>
+      </ul>
+    </div>
+  </div>
+
   <!-- HARDWARE TAB -->
   <div id="hardware-tab" class="tab">
     <div class="hw-summary" id="hwSummary">Se citeste configuratia hardware...</div>
@@ -429,6 +502,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
           </div>
         </div>
         <div class="cap-note">
+          <div id="biCommunicationSummary" style="font-weight:700;margin-bottom:5px"></div>
           Capabilitatea indica suportul placii si al platformei. Firmware-ul curent foloseste MQTT prin WiFi;
           Zigbee, Thread sau Matter necesita un firmware configurat explicit pentru protocolul ales.
         </div>
@@ -474,6 +548,25 @@ var englishText = {
   'Română':'Romanian',
   'MQTT • Home Assistant • DHT11 • PIR • Releu • OLED':'MQTT • Home Assistant • DHT11 • PIR • Relay • OLED',
   'Info Placa':'Board Info',
+  'Comunicare IoT':'IoT Communication',
+  'Se citeste configuratia radio...':'Reading radio configuration...',
+  'Protocol de comunicare IoT':'IoT communication protocol',
+  'Selectia este salvata in memoria NVS. Modurile Zigbee si Thread necesita un firmware construit explicit cu stack-ul protocolului ales; starea de mai sus indica modul activ real.':'The selection is stored in NVS. Zigbee and Thread require firmware built explicitly with the selected protocol stack; the status above shows the actual active mode.',
+  'Protocol selectat':'Selected protocol',
+  'Coordinator / gateway Zigbee':'Zigbee coordinator / gateway',
+  'Coordinator Zigbee generic':'Generic Zigbee coordinator',
+  'Adresa portalului coordinatorului':'Coordinator portal address',
+  'Mod pairing Zigbee':'Zigbee pairing mode',
+  'Automat: conectare sau rejoin la reteaua salvata':'Automatic: join or rejoin the saved network',
+  'Retea noua: sterge asocierea Zigbee la urmatoarea pornire':'New network: erase Zigbee pairing on the next boot',
+  'Adresa este folosita numai pentru deschiderea portalului de administrare, nu pentru conexiunea radio Zigbee.':'The address is used only to open the administration portal, not for the Zigbee radio connection.',
+  'Deschide portalul coordinatorului':'Open coordinator portal',
+  'MQTT prin WiFi':'MQTT over Wi-Fi',
+  'Salveaza selectia':'Save selection',
+  'Cerinte:':'Requirements:',
+  'necesita un coordinator/gateway Zigbee aflat in modul de asociere.':'requires a Zigbee coordinator/gateway in pairing mode.',
+  'necesita o retea Thread, credencialele ei si un Thread Border Router.':'requires a Thread network, its credentials, and a Thread Border Router.',
+  'Pentru control direct din Home Assistant prin Thread este necesar Matter over Thread.':'Direct control from Home Assistant over Thread requires Matter over Thread.',
   'Temperatura':'Temperature',
   'Umiditate':'Humidity',
   'Senzor Miscare':'Motion Sensor',
@@ -599,6 +692,7 @@ function applyUiLanguage(language) {
   translateStaticText();
   updateData();
   if (hardwareData) loadHardwareCfg();
+  loadCommunicationConfig();
   var boardContent = document.getElementById('boardContent');
   if (boardContent && boardContent.style.display === 'block') loadBoardInfo();
 }
@@ -626,6 +720,7 @@ function showTab(name, btn) {
   btn.classList.add('active');
   if (name === 'wifi')  loadWifiStatus();
   if (name === 'mqtt')  loadMqttCfg();
+  if (name === 'communication') loadCommunicationConfig();
   if (name === 'hardware') loadHardwareCfg();
   serialTabActive = name === 'serial';
   if (serialTabActive) loadSerialLog();
@@ -769,6 +864,165 @@ function scheduleRgbUpdate() {
 document.getElementById('rgbColor').addEventListener('input', scheduleRgbUpdate);
 document.getElementById('rgbBrightness').addEventListener('input', scheduleRgbUpdate);
 loadRgbLed();
+
+// ---- IoT Communication ----
+function communicationLabel(protocol) {
+  if (protocol === 'zigbee') return 'Zigbee';
+  if (protocol === 'thread') return 'Thread';
+  return tr('MQTT prin WiFi', 'MQTT over Wi-Fi');
+}
+
+function renderCommunicationConfig(d) {
+  var tabButton = document.getElementById('communicationTabButton');
+  tabButton.style.display = d.visible ? '' : 'none';
+  if (!d.visible) return;
+
+  var select = document.getElementById('communicationProtocol');
+  select.querySelector('option[value="zigbee"]').disabled = !d.zigbee_capable;
+  select.querySelector('option[value="thread"]').disabled = !d.thread_capable;
+  select.value = d.selected_protocol || 'wifi_mqtt';
+  document.getElementById('zigbeeCoordinator').value =
+    d.zigbee_coordinator || 'generic';
+  document.getElementById('zigbeeCoordinatorHost').value =
+    d.zigbee_coordinator_host || '';
+  document.getElementById('zigbeePairingMode').value =
+    d.zigbee_pairing_mode || 'auto';
+  updateCoordinatorVisibility();
+
+  var status = document.getElementById('communicationStatus');
+  var selected = communicationLabel(d.selected_protocol);
+  var active = communicationLabel(d.active_protocol);
+  if (d.firmware_change_required) {
+    status.className = 'mqtt-bar mqtt-unknown';
+    status.textContent = tr('Selectat: ', 'Selected: ') + selected + ' | ' +
+      tr('Activ: ', 'Active: ') + active + ' | ' +
+      tr('este necesar firmware compatibil', 'compatible firmware required');
+  } else {
+    status.className = 'mqtt-bar mqtt-ok';
+    status.textContent = tr('Mod activ: ', 'Active mode: ') + active;
+  }
+}
+
+function updateCoordinatorVisibility() {
+  var zigbeeSelected =
+    document.getElementById('communicationProtocol').value === 'zigbee';
+  document.getElementById('zigbeeCoordinatorConfig').style.display =
+    zigbeeSelected ? 'block' : 'none';
+  if (zigbeeSelected) renderCoordinatorHelp();
+}
+
+function renderCoordinatorHelp() {
+  var coordinator = document.getElementById('zigbeeCoordinator').value;
+  var help = document.getElementById('zigbeeCoordinatorHelp');
+  if (coordinator === 'zbbridge_u') {
+    help.style.background = '#fff7ed';
+    help.style.borderLeftColor = '#f97316';
+    help.style.color = '#9a3412';
+    help.innerHTML = '<strong>' +
+      tr('Limitare ZBBridge-U:', 'ZBBridge-U limitation:') + '</strong> ' +
+      tr('firmware-ul original accepta oficial numai dispozitive SONOFF si din ecosistemul eWeLink. Un dispozitiv Zigbee personalizat pe ESP32-C6 poate sa nu fie acceptat sau recunoscut. Asocierea se porneste din portal cu „+ Add Device”.',
+         'the stock firmware officially accepts only SONOFF and eWeLink ecosystem devices. A custom ESP32-C6 Zigbee device may not be accepted or recognized. Start pairing from the portal using \"+ Add Device\".');
+  } else if (coordinator === 'zha') {
+    help.style.background = '#f0f9ff';
+    help.style.borderLeftColor = '#3b82f6';
+    help.style.color = '#1e3a5f';
+    help.textContent = tr(
+      'In Home Assistant deschide ZHA, selecteaza Add device, apoi porneste firmware-ul Zigbee al placii. Placa va cauta automat reteaua aflata in permit join.',
+      'In Home Assistant open ZHA, select Add device, then start the board Zigbee firmware. The board automatically searches for the network in permit-join mode.');
+  } else if (coordinator === 'zigbee2mqtt') {
+    help.style.background = '#f0f9ff';
+    help.style.borderLeftColor = '#3b82f6';
+    help.style.color = '#1e3a5f';
+    help.textContent = tr(
+      'In Zigbee2MQTT activeaza Permit join, apoi porneste firmware-ul Zigbee al placii. Nu este necesara adresa IP a coordinatorului in firmware-ul ESP32.',
+      'In Zigbee2MQTT enable Permit join, then start the board Zigbee firmware. The coordinator IP address is not required by the ESP32 firmware.');
+  } else {
+    help.style.background = '#f0f9ff';
+    help.style.borderLeftColor = '#3b82f6';
+    help.style.color = '#1e3a5f';
+    help.textContent = tr(
+      'Activeaza permit join pe coordinator si porneste firmware-ul Zigbee al placii. Selectarea profilului nu alege coordinatorul prin IP; asocierea se face direct prin radio.',
+      'Enable permit join on the coordinator and start the board Zigbee firmware. Selecting this profile does not choose the coordinator by IP; pairing happens directly over radio.');
+  }
+}
+
+function openCoordinatorPortal() {
+  var host = document.getElementById('zigbeeCoordinatorHost').value.trim();
+  if (!host || !/^[A-Za-z0-9.:[\]-]+$/.test(host)) {
+    showCommunicationMsg(
+      tr('Introdu o adresa IP sau un nume local valid pentru coordinator.',
+         'Enter a valid coordinator IP address or local hostname.'),
+      'err');
+    return;
+  }
+  window.open('http://' + host, '_blank', 'noopener');
+}
+
+function loadCommunicationConfig() {
+  fetch('/api/communication_config', {cache:'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(renderCommunicationConfig)
+    .catch(function() {
+      document.getElementById('communicationTabButton').style.display = 'none';
+    });
+}
+
+function saveCommunicationConfig() {
+  var protocol = document.getElementById('communicationProtocol').value;
+  var coordinator = document.getElementById('zigbeeCoordinator').value;
+  var coordinatorHost =
+    document.getElementById('zigbeeCoordinatorHost').value.trim();
+  var pairingMode = document.getElementById('zigbeePairingMode').value;
+  showCommunicationMsg(tr('Se salveaza...', 'Saving...'), 'info');
+  fetch('/api/communication_config', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'protocol=' + encodeURIComponent(protocol) +
+      '&zigbee_coordinator=' + encodeURIComponent(coordinator) +
+      '&zigbee_coordinator_host=' + encodeURIComponent(coordinatorHost) +
+      '&zigbee_pairing_mode=' + encodeURIComponent(pairingMode)
+  })
+    .then(function(r) {
+      return r.json().then(function(d) { return {ok:r.ok, data:d}; });
+    })
+    .then(function(result) {
+      if (!result.ok) {
+        showCommunicationMsg(result.data.error || tr('Eroare la salvare!', 'Error while saving!'), 'err');
+        return;
+      }
+      renderCommunicationConfig({
+        visible:true,
+        zigbee_capable:true,
+        thread_capable:!document.querySelector('option[value="thread"]').disabled,
+        selected_protocol:result.data.selected_protocol,
+        active_protocol:result.data.active_protocol,
+        zigbee_coordinator:result.data.zigbee_coordinator,
+        zigbee_coordinator_host:result.data.zigbee_coordinator_host,
+        zigbee_pairing_mode:result.data.zigbee_pairing_mode,
+        firmware_change_required:result.data.firmware_change_required
+      });
+      showCommunicationMsg(
+        result.data.firmware_change_required
+          ? tr('Selectia a fost salvata. Pentru activare trebuie instalat firmware-ul protocolului ales.',
+               'Selection saved. Firmware for the selected protocol must be installed to activate it.')
+          : tr('Selectia a fost salvata si corespunde modului activ.',
+               'Selection saved and it matches the active mode.'),
+        result.data.firmware_change_required ? 'info' : 'ok');
+    })
+    .catch(function() {
+      showCommunicationMsg(tr('Eroare la salvare!', 'Error while saving!'), 'err');
+    });
+}
+
+function showCommunicationMsg(txt, type) {
+  var message = document.getElementById('communicationMsg');
+  message.textContent = txt;
+  message.style.display = 'block';
+  message.style.background = type === 'ok' ? '#d1fae5' : type === 'err' ? '#fee2e2' : '#dbeafe';
+  message.style.color = type === 'ok' ? '#065f46' : type === 'err' ? '#991b1b' : '#1e40af';
+}
+
+loadCommunicationConfig();
 
 // ---- Serial Log ----
 var serialCursor = 0;
@@ -1080,6 +1334,52 @@ var boardLayouts = {
       {label:'USB D+ / GPIO13',gpio:13}, {label:'USB D- / GPIO12',gpio:12},
       {label:'GND',type:'power'}, {label:'NC',type:'control'}
     ]
+  },
+  c6supermini: {
+    title: 'ESP32-C6 Super Mini - 20 pini',
+    chip: 'ESP32-C6<br>Super Mini',
+    note: 'Vedere de sus, USB sus. GPIO12/13 sunt USB D-/D+, GPIO9 este BOOT, GPIO8 este LED RGB, iar GPIO15 este LED albastru. GPIO21/22/23 si GPIO12/13 sunt pad-uri inferioare.',
+    left: [
+      {label:'TX / GPIO16',gpio:16}, {label:'RX / GPIO17',gpio:17},
+      {label:'GPIO0 / A0',gpio:0}, {label:'GPIO1 / A1',gpio:1},
+      {label:'GPIO2 / A2',gpio:2}, {label:'GPIO3 / A3',gpio:3},
+      {label:'GPIO4 / SS',gpio:4}, {label:'GPIO5 / MOSI',gpio:5},
+      {label:'GPIO6 / MISO',gpio:6}, {label:'GPIO7 / SCK',gpio:7}
+    ],
+    right: [
+      {label:'5V',type:'power'}, {label:'GND',type:'power'}, {label:'3V3',type:'power'},
+      {label:'GPIO20 / SDA',gpio:20}, {label:'GPIO19 / SCL',gpio:19},
+      {label:'GPIO18',gpio:18}, {label:'GPIO15 / LED',gpio:15},
+      {label:'GPIO14',gpio:14}, {label:'GPIO9 / BOOT',gpio:9},
+      {label:'GPIO8 / RGB',gpio:8}
+    ]
+  },
+  tzigbee: {
+    title: 'LILYGO T-ZIGBEE v1.2 - headere ESP32-C3 / TLSR8258',
+    chip: 'ESP32-C3<br>+ TLSR8258',
+    note: 'Vedere de sus, USB jos. GPIO0 alimenteaza TLSR8258, iar GPIO18/19 formeaza UART-ul intern Zigbee.',
+    left: [
+      {label:'3V3',type:'power'}, {label:'RST',type:'control'}, {label:'MTMS / GPIO4',gpio:4},
+      {label:'MTDI / GPIO5',gpio:5}, {label:'MTCK / GPIO6',gpio:6},
+      {label:'MTDO / GPIO7',gpio:7}, {label:'GPIO8',gpio:8},
+      {label:'NC',type:'control'}, {label:'NC',type:'control'}, {label:'NC',type:'control'},
+      {label:'TLSR PB4',type:'control'}, {label:'TLSR PB5',type:'control'},
+      {label:'TLSR PC0',type:'control'}, {label:'GND',type:'power'},
+      {label:'TLSR PC1',type:'control'}, {label:'TLSR PC2',type:'control'},
+      {label:'TLSR PC3',type:'control'}, {label:'TLSR PC4',type:'control'},
+      {label:'5V',type:'power'}, {label:'NC',type:'control'}, {label:'NC',type:'control'}
+    ],
+    right: [
+      {label:'GND',type:'power'}, {label:'GPIO1',gpio:1}, {label:'USER / GPIO2',gpio:2},
+      {label:'TX0 / GPIO21',gpio:21}, {label:'RX0 / GPIO20',gpio:20},
+      {label:'NC',type:'control'}, {label:'GND',type:'power'},
+      {label:'NC',type:'control'}, {label:'NC',type:'control'}, {label:'NC',type:'control'},
+      {label:'NC',type:'control'}, {label:'NC',type:'control'},
+      {label:'TLSR PD7',type:'control'}, {label:'TLSR PA1',type:'control'},
+      {label:'TLSR PD2',type:'control'}, {label:'TLSR PD3',type:'control'},
+      {label:'NC',type:'control'}, {label:'NC',type:'control'}, {label:'NC',type:'control'},
+      {label:'NC',type:'control'}, {label:'NC',type:'control'}
+    ]
   }
 };
 
@@ -1091,6 +1391,13 @@ function translateHardwareText(value) {
     'neexpus pe ESP32-S3-DevKitC-1':'not exposed on ESP32-S3-DevKitC-1',
     'neexpus pe ESP32-C6-DevKitC-1':'not exposed on ESP32-C6-DevKitC-1',
     'neexpus pe ESP32-C3-DevKitM-1':'not exposed on ESP32-C3-DevKitM-1',
+    'neexpus pe LILYGO T-ZIGBEE':'not exposed on LILYGO T-ZIGBEE',
+    'alimentare coprocesor Zigbee TLSR8258':'TLSR8258 Zigbee coprocessor power',
+    'LED albastru onboard':'onboard blue LED',
+    'UART intern catre TLSR8258':'internal UART to TLSR8258',
+    'buton USER onboard si pin de boot/strapping':'onboard USER button and boot/strapping pin',
+    'buton BOOT onboard si pin de boot/strapping':'onboard BOOT button and boot/strapping pin',
+    'LED albastru onboard si pin de boot/strapping':'onboard blue LED and boot/strapping pin',
     'USB OTG/JTAG implicit':'default USB OTG/JTAG',
     'UART0 folosit pentru programare/log':'UART0 used for programming/logging',
     'indisponibil pe modulele cu flash/PSRAM Octal':'unavailable on modules with Octal flash/PSRAM',
@@ -1134,6 +1441,8 @@ function selectedPinRoles() {
 }
 
 function boardLayoutFor(profile) {
+  if (profile.indexOf('T-ZIGBEE') >= 0) return boardLayouts.tzigbee;
+  if (profile.indexOf('C6-SuperMini') >= 0) return boardLayouts.c6supermini;
   if (profile.indexOf('S3') >= 0) return boardLayouts.s3;
   if (profile.indexOf('C3') >= 0) return boardLayouts.c3;
   if (profile.indexOf('C6') >= 0) return boardLayouts.c6;
@@ -1365,12 +1674,19 @@ function loadBoardInfo() {
       document.getElementById('biCores').textContent     = d.cpu_cores + ' x ' + d.cpu_freq + ' MHz';
       document.getElementById('biFreq').textContent      = d.cpu_freq + ' MHz';
 
-      var zigbeeDetail = d.zigbee_capable
-        ? tr('Radio IEEE 802.15.4 disponibil. Mod firmware: ',
-             'IEEE 802.15.4 radio available. Firmware mode: ') +
-          (d.zigbee_firmware_mode || tr('necunoscut', 'unknown')) + '.'
-        : tr('Lipseste radioul IEEE 802.15.4 necesar pentru Zigbee nativ.',
-             'The IEEE 802.15.4 radio required for native Zigbee is not available.');
+      var zigbeeDetail;
+      if (d.zigbee_external) {
+        zigbeeDetail = tr('Coprocesor TLSR8258 disponibil prin UART intern. Mod firmware: ',
+                          'TLSR8258 coprocessor available over internal UART. Firmware mode: ') +
+          (d.zigbee_firmware_mode || tr('necunoscut', 'unknown')) + '.';
+      } else if (d.zigbee_capable) {
+        zigbeeDetail = tr('Radio IEEE 802.15.4 disponibil. Mod firmware: ',
+                          'IEEE 802.15.4 radio available. Firmware mode: ') +
+          (d.zigbee_firmware_mode || tr('necunoscut', 'unknown')) + '.';
+      } else {
+        zigbeeDetail = tr('Lipseste radioul IEEE 802.15.4 necesar pentru Zigbee nativ.',
+                          'The IEEE 802.15.4 radio required for native Zigbee is not available.');
+      }
       setCapability('biZigbeeStatus', 'biZigbeeDetail', d.zigbee_capable, zigbeeDetail);
 
       var threadDetail = d.thread_capable
@@ -1389,6 +1705,10 @@ function loadBoardInfo() {
         : tr('Placa nu ofera un transport IP compatibil Matter in aceasta configuratie.',
              'The board does not provide a Matter-compatible IP transport in this configuration.');
       setCapability('biMatterStatus', 'biMatterDetail', d.matter_capable, matterDetail);
+      document.getElementById('biCommunicationSummary').textContent =
+        tr('Comunicare selectata: ', 'Selected communication: ') +
+        communicationLabel(d.communication_selected) + ' | ' +
+        tr('activa: ', 'active: ') + communicationLabel(d.communication_active);
 
       document.getElementById('biFlash').textContent     = (d.flash_size / 1048576).toFixed(1) + ' MB';
       document.getElementById('biPsram').textContent     =

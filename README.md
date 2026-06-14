@@ -32,7 +32,7 @@ Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și 
 - **Configurare WiFi din browser** — fără a rescrie firmware-ul
 - **Configurare MQTT din browser** — broker/port/user/parolă salvate în memorie NVS
 - **Configurare hardware din browser** — GPIO pentru fiecare periferic, salvate în NVS
-- **Multi-board** — profile PlatformIO pentru ESP32-WROOM-32, ESP32-C3, ESP32-C6 și ESP32-S3
+- **Multi-board** — profile PlatformIO pentru ESP32-WROOM-32, ESP32-C3, ESP32-C6, ESP32-C6 Super Mini, ESP32-S3 și LILYGO T-ZIGBEE
 - **Inventar GPIO** — pini liberi, ocupați, doar-input, rezervați și pini de boot/USB
 - **Pinout vizual** — desen simplificat al plăcii, cu ordinea pinilor și evidențierea funcțiilor selectate
 - **FreeRTOS portabil** — funcționează pe variante ESP32 single-core și dual-core
@@ -44,7 +44,7 @@ Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și 
 
 | Componentă | Specificații | Cantitate |
 |---|---|---|
-| ESP32 | WROOM-32, C3-DevKitM-1, C6-DevKitC-1 sau S3-DevKitC-1 | 1 |
+| ESP32 | WROOM-32, C3-DevKitM-1, C6-DevKitC-1, C6 Super Mini, S3-DevKitC-1 sau LILYGO T-ZIGBEE | 1 |
 | Senzor DHT11 | Modul KY-015 cu rezistență pull-up inclusă | 1 |
 | Senzor PIR | HC-SR501 | 1 |
 | Releu SSR | Low-level trigger 5V (LOW = ON) | 1 |
@@ -108,7 +108,9 @@ Valorile de mai sus sunt profilul implicit `esp32-wroom`. Pentru celelalte medii
 |---|---:|---:|---:|---:|---:|---:|
 | `esp32-wroom` | 4 | 32 | 23 | 18 | 21 | 22 |
 | `esp32-c3` | 4 | 3 | 7 | 10 | 6 | 5 |
+| `lilygo-t-zigbee` | 4 | 5 | 6 | 7 | 8 | 1 |
 | `esp32-c6` | 2 | 3 | 7 | 18 | 6 | 10 |
+| `esp32-c6-supermini` | 0 | 1 | 2 | 3 | 20 | 19 |
 | `esp32-s3` | 4 | 5 | 7 | 18 | 8 | 9 |
 
 Pinii pot fi schimbați ulterior din tab-ul **Hardware**. Valoarea `-1`, afișată în interfață ca
@@ -136,8 +138,14 @@ pio run -e esp32-wroom -t upload
 # ESP32-C3-DevKitM-1
 pio run -e esp32-c3 -t upload
 
+# LILYGO T-ZIGBEE v1.2
+pio run -e lilygo-t-zigbee -t upload
+
 # ESP32-C6-DevKitC-1
 pio run -e esp32-c6 -t upload
+
+# ESP32-C6 Super Mini
+pio run -e esp32-c6-supermini -t upload
 
 # ESP32-S3-DevKitC-1-N8
 pio run -e esp32-s3 -t upload
@@ -145,6 +153,83 @@ pio run -e esp32-s3 -t upload
 
 Profilul `esp32-s3` este pentru varianta N8 fără PSRAM. La modulele S3 cu memorie
 Octal, GPIO35, GPIO36 și GPIO37 sunt folosiți intern și nu trebuie conectați la periferice.
+
+Pentru `lilygo-t-zigbee`, selectează modul ESP32-C3 din comutatoarele DIP și folosește
+adaptorul T-U2T pentru upload și log serial. Profilul pornește TLSR8258 prin GPIO0 și
+protejează GPIO18/19, folosiți de UART-ul intern Zigbee. Firmware-ul principal rămâne
+MQTT prin WiFi; biblioteca HCI pentru operarea rețelei Zigbee nu este încă activată.
+GPIO8 este folosit ca SDA; rezistența pull-up I2C păstrează nivelul de boot necesar
+acestui pin de strapping.
+
+Configurația DIP pentru programarea ESP32-C3 este `3=ON`, `4=ON`, iar
+`1=OFF`, `2=OFF`, `5=OFF`, cu marcajul `ON` al blocului DIP ca reper. Portul USB-C
+al plăcii nu include un convertor USB-serial și nu se va enumera direct în sistem;
+T-U2T trebuie conectat între placă și portul USB al calculatorului.
+
+Ordinea fizică este `PC -> cablu USB de date -> mufa USB-C mamă T-U2T ->
+conectorul USB-C tată T-U2T -> mufa USB-C a plăcii`. Pentru diagnostic, T-U2T
+poate fi conectat la PC fără placă: adaptorul trebuie să apară în `lsusb`. Dacă
+enumerarea eșuează deja în acest test, problema este adaptorul, cablul, contactul
+USB-C sau portul/hub-ul USB, nu ESP32-C3 și nici poziția DIP.
+
+Pentru `esp32-c6-supermini`, conectarea se face direct prin USB-C; placa folosește
+interfața USB Serial/JTAG integrată și apare de regulă ca `/dev/ttyACM0`. La prima
+programare, sau dacă upload-ul nu poate reseta automat placa, ține apăsat **BOOT**,
+apasă și eliberează **RESET**, apoi eliberează **BOOT** și pornește imediat upload-ul.
+Profilul evită intenționat comenzile RTS/DTR care eșuează pe unele combinații
+Linux + USB Serial/JTAG. După terminarea upload-ului, apasă **RESET** pentru pornire.
+
+Pe plăcile cu radio Zigbee, dashboard-ul afișează tab-ul **Comunicare IoT**.
+Selecția `MQTT prin WiFi`, `Zigbee` sau `Thread` este salvată în NVS și este ascunsă
+pe plăcile fără capabilități Zigbee. Interfața afișează separat modul selectat și
+modul activ real. Zigbee și Thread necesită în continuare un firmware construit cu
+stack-ul corespunzător; schimbarea selecției nu poate transforma firmware-ul MQTT
+deja instalat într-un firmware Zigbee sau Thread.
+
+Pentru Zigbee poate fi salvat și un profil de coordinator: generic, Home Assistant
+ZHA, Zigbee2MQTT sau SONOFF ZBBridge-U. Adresa IP/numele local este folosit numai
+pentru deschiderea portalului coordinatorului. Dispozitivele Zigbee nu aleg
+coordinatorul prin IP; ele se alătură prin radio unei rețele aflate în `permit join`.
+Nu există un mod radio separat de pairing „SONOFF”: opțiunea SONOFF selectează doar
+instrucțiunile și portalul coordinatorului. Asocierea efectivă folosește procedura
+Zigbee standard de network steering.
+
+Selectorul de pairing are două moduri:
+
+- **Automat** — încearcă rejoin la rețeaua salvată; dacă nu există una, caută o
+  rețea Zigbee aflată în `permit join`.
+- **Rețea nouă** — șterge asocierea Zigbee la următoarea pornire și caută din nou
+  un coordinator. Cererea este resetată automat la **Automat** după utilizare.
+
+În firmware-ul original, ZBBridge-U pornește asocierea din **+ Add Device** și
+acceptă oficial numai dispozitive SONOFF și din ecosistemul eWeLink, deci un
+endpoint Zigbee personalizat pe ESP32-C6 nu are compatibilitate garantată.
+
+Firmware-ul Zigbee Router pentru ESP32-C6 SuperMini se compilează și se instalează
+separat:
+
+```bash
+pio run -e esp32-c6-supermini-zigbee -t upload
+```
+
+Înainte de upload, salvează selecția și modul de pairing din firmware-ul web.
+Upload-ul obișnuit păstrează NVS; nu folosi `erase`, deoarece acesta ar șterge
+configurația. Activează apoi **Permit join** în ZHA/Zigbee2MQTT sau **+ Add Device**
+în portalul ZBBridge-U și resetează placa.
+
+Firmware-ul Zigbee publică atribute standard, fără MQTT și fără adresă IP:
+
+- endpoint `10`: temperatură și umiditate DHT11, raportate la 30 de secunde;
+- endpoint `11`: ocupare PIR, raportată la schimbarea stării;
+- endpoint `12`: releu/priză, comandabil de coordinator prin clusterul On/Off.
+
+După instalarea acestui target, pagina web nu mai este disponibilă. Pentru a
+schimba din nou configurația din browser trebuie reinstalat targetul
+`esp32-c6-supermini`, păstrând NVS.
+
+Ținerea butonului **BOOT** apăsat timp de 5 secunde face factory reset Zigbee.
+Nu conecta periferice pe GPIO12 și GPIO13, deoarece acestea sunt liniile USB D-/D+.
+GPIO8 este rezervat LED-ului RGB onboard, iar GPIO9 este butonul BOOT.
 
 Sau folosește butoanele **Build** / **Upload** din bara PlatformIO în VS Code.
 
@@ -235,7 +320,9 @@ Profile disponibile:
 |---|---|
 | `wroom` | ESP32-WROOM-32 / ESP32 Dev Module |
 | `c3` | ESP32-C3-DevKitM-1 |
+| `t-zigbee` | LILYGO T-ZIGBEE v1.2, ESP32-C3 + TLSR8258 |
 | `c6` | ESP32-C6-DevKitC-1 |
+| `c6-supermini` | ESP32-C6 Super Mini |
 | `s3` | ESP32-S3-DevKitC-1 |
 
 Setup inițial:
@@ -263,6 +350,7 @@ Comenzi uzuale:
 
 # Prima instalare prin USB
 ./setup.sh run wroom /dev/ttyUSB0
+./setup.sh run c6-supermini /dev/ttyACM0
 ./setup.sh run s3 /dev/ttyACM0
 
 # Update OTA și loguri după prima instalare
@@ -285,10 +373,10 @@ ESP32 MQTT Home Assistant DIY Kit/
 │   ├── WebPages.h               # Dashboard HTML embedded
 │   └── HardwareConfig.h         # Modelul configurației hardware
 ├── scripts/
-│   └── select_esp_usb_port.py   # Selectează și verifică porturile USB pentru C3/S3
+│   └── select_esp_usb_port.py   # Selectează porturile USB pentru C3/C6/T-ZIGBEE/S3
 ├── esphome/
 │   ├── common.yaml              # Componente și integrare Home Assistant comune
-│   ├── esp32-ha-kit-*.yaml      # Profile WROOM, C3, C6 și S3
+│   ├── esp32-ha-kit-*.yaml      # Profile WROOM, C3, T-ZIGBEE, C6, C6 Super Mini și S3
 │   ├── secrets.example.yaml     # Model pentru credențiale și chei
 │   ├── requirements.txt         # Versiunea ESPHome utilizată
 │   └── setup.sh                 # Setup, validare, build, upload și loguri
@@ -332,7 +420,7 @@ ESP32 MQTT Home Assistant DIY Kit/
 pio run
 
 # Build toate profilele
-pio run -e esp32-wroom -e esp32-c3 -e esp32-c6 -e esp32-s3
+pio run -e esp32-wroom -e esp32-c3 -e lilygo-t-zigbee -e esp32-c6 -e esp32-c6-supermini -e esp32-s3
 
 # Upload profil selectat
 pio run -e esp32-c3 -t upload
@@ -377,6 +465,8 @@ bash generate_pdf_advanced.sh Client_Configuration_Guide.html -o Client_Configur
 | Entitățile nu apar în HA | MQTT Auto-Discovery dezactivat | Activează din HA: Setări → Dispozitive → MQTT → Activează Auto-Discovery |
 | Configurația GPIO este respinsă | Pin inexistent, rezervat, neexpus sau folosit de două funcții | Consultă inventarul din tab-ul Hardware și selectează alt GPIO |
 | C3: `USBSerial was not declared` | CDC activat fără modul USB Serial/JTAG | Păstrează împreună `-DARDUINO_USB_MODE=1` și `-DARDUINO_USB_CDC_ON_BOOT=1` în profilul `esp32-c3` |
+| C6 Super Mini apare ca `/dev/ttyACM0`, dar upload-ul nu pornește | Placa nu a intrat manual în bootloader | Ține BOOT, apasă și eliberează RESET, eliberează BOOT, rulează `pio run -e esp32-c6-supermini -t upload`, apoi apasă RESET după scriere |
+| T-ZIGBEE nu apare ca port serial | USB-C-ul plăcii este conectat direct, DIP-urile sunt greșite sau lipsește T-U2T | Folosește T-U2T și setează DIP 3/4 ON, DIP 1/2/5 OFF, apoi reconectează și apasă RESET |
 
 ---
 

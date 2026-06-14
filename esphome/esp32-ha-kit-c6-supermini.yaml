@@ -1,0 +1,18 @@
+substitutions:
+  device_name: "esp32-ha-kit-c6-supermini"
+  friendly_name: "HA Kit C6 Super Mini"
+  dht_pin: "GPIO0"
+  pir_pin: "GPIO1"
+  relay_pin: "GPIO2"
+  heartbeat_pin: "GPIO3"
+  sda_pin: "GPIO20"
+  scl_pin: "GPIO19"
+  oled_address: "0x3C"
+
+packages:
+  common: !include common.yaml
+
+esp32:
+  board: esp32-c6-devkitm-1
+  framework:
+    type: esp-idf
