@@ -60,8 +60,7 @@ Comenzi:
   version   Afiseaza versiunile Python si ESPHome.
 
 Variabile optionale pentru rulare neinteractiva:
-  WIFI_SSID, WIFI_PASSWORD, FALLBACK_PASSWORD, API_ENCRYPTION_KEY,
-  OTA_PASSWORD, WEB_USERNAME, WEB_PASSWORD
+  AP_PASSWORD, API_ENCRYPTION_KEY, OTA_PASSWORD, WEB_USERNAME, WEB_PASSWORD
 
 Exemple:
   ./setup.sh init
@@ -183,13 +182,10 @@ generate_secrets() {
     return
   fi
 
-  prompt_value WIFI_SSID "SSID WiFi"
-  prompt_value WIFI_PASSWORD "Parola WiFi" true
-
   WEB_USERNAME="${WEB_USERNAME:-admin}"
 
-  export WIFI_SSID WIFI_PASSWORD WEB_USERNAME
-  export FALLBACK_PASSWORD="${FALLBACK_PASSWORD:-}"
+  export WEB_USERNAME
+  export AP_PASSWORD="${AP_PASSWORD:-${FALLBACK_PASSWORD:-}}"
   export API_ENCRYPTION_KEY="${API_ENCRYPTION_KEY:-}"
   export OTA_PASSWORD="${OTA_PASSWORD:-}"
   export WEB_PASSWORD="${WEB_PASSWORD:-}"
@@ -202,10 +198,8 @@ import os
 import secrets
 
 values = {
-    "wifi_ssid": os.environ["WIFI_SSID"],
-    "wifi_password": os.environ["WIFI_PASSWORD"],
     "fallback_password": (
-        os.environ["FALLBACK_PASSWORD"] or secrets.token_urlsafe(18)
+        os.environ["AP_PASSWORD"] or secrets.token_urlsafe(18)
     ),
     "api_encryption_key": (
         os.environ["API_ENCRYPTION_KEY"]

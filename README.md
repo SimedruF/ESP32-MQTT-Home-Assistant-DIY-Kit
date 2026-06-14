@@ -333,11 +333,31 @@ cd esphome
 ```
 
 Scriptul detectează automat Python 3.11 sau mai nou, creează mediul local
-`esphome/.venv`, instalează versiunea ESPHome din `requirements.txt`, solicită
-datele WiFi și generează cheile API/OTA în `secrets.yaml`. Fișierul cu secrete
+`esphome/.venv`, instalează versiunea ESPHome din `requirements.txt` și generează
+parola access point-ului și cheile API/OTA în `secrets.yaml`. Nu sunt solicitate
+și nu sunt incluse credențiale pentru o rețea WiFi externă. Fișierul cu secrete
 este exclus din Git. Build-urile sunt păstrate în
 `~/.cache/esp32-ha-kit-esphome`, deoarece ESP-IDF nu acceptă spații în calea
 directorului de compilare.
+
+Firmware-ul ESPHome pornește numai în mod access point, cu SSID-ul egal cu numele
+profilului, de exemplu `HA Kit C6 Super Mini`. După conectarea la această rețea,
+interfața web este disponibilă la `http://192.168.4.1`. Native API și OTA nu sunt
+accesibile din rețeaua locală a casei; clientul trebuie conectat direct la
+access point-ul plăcii.
+
+Pentru configurarea completă AP-only a unei plăci ESP32-WROOM există scriptul
+dedicat:
+
+```bash
+cd esphome
+./setup-wroom-ap.sh /dev/ttyUSB0
+```
+
+Scriptul creează mediul ESPHome și `secrets.yaml` dacă lipsesc, validează,
+compilează și programează profilul WROOM. Dacă există o singură placă
+`/dev/ttyUSB*`, portul poate fi omis. Opțiunea `--force-secrets` generează parole
+și chei noi și trebuie folosită numai când cele existente nu mai sunt necesare.
 
 Comenzi uzuale:
 
@@ -379,7 +399,8 @@ ESP32 MQTT Home Assistant DIY Kit/
 │   ├── esp32-ha-kit-*.yaml      # Profile WROOM, C3, T-ZIGBEE, C6, C6 Super Mini și S3
 │   ├── secrets.example.yaml     # Model pentru credențiale și chei
 │   ├── requirements.txt         # Versiunea ESPHome utilizată
-│   └── setup.sh                 # Setup, validare, build, upload și loguri
+│   ├── setup.sh                 # Setup, validare, build, upload și loguri
+│   └── setup-wroom-ap.sh        # Instalare completă WROOM în mod AP-only
 ├── lib/
 │   └── WiFiWebManager/          # Biblioteca custom: WiFi AP/STA + WebServer
 │       ├── WiFiWebManager.h
