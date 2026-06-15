@@ -5,15 +5,21 @@
 #include <Preferences.h>
 
 constexpr int8_t PIN_DISABLED = -1;
+constexpr uint8_t DIGITAL_INPUT_FLOATING = 0;
+constexpr uint8_t DIGITAL_INPUT_PULLUP = 1;
+constexpr uint8_t DIGITAL_INPUT_PULLDOWN = 2;
 
 struct HardwareConfig {
   int8_t dhtPin;
   int8_t pirPin;
   int8_t relayPin;
+  int8_t digitalInputPin;
   int8_t heartbeatPin;
   int8_t sdaPin;
   int8_t sclPin;
   bool relayActiveLow;
+  bool digitalInputActiveLow;
+  uint8_t digitalInputMode;
   uint8_t oledAddress;
 };
 

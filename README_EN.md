@@ -37,7 +37,7 @@ Auto-Discovery** and a web dashboard configured directly from a browser.
 - **MQTT Auto-Discovery** - entities appear automatically in Home Assistant
 - **Web dashboard** - monitoring, MQTT/Wi-Fi/hardware configuration and board information
 - **Browser Wi-Fi configuration** - no firmware rebuild required
-- **Browser MQTT configuration** - broker, port, username and password stored in NVS
+- **Browser MQTT configuration** - broker, credentials and publish/command topics stored in NVS
 - **Browser hardware configuration** - GPIO assignments stored in NVS
 - **Multiple boards** - PlatformIO profiles for ESP32-WROOM-32, ESP32-C3,
   ESP32-C6, ESP32-C6 Super Mini, ESP32-S3 and LILYGO T-ZIGBEE
@@ -286,7 +286,7 @@ Open `http://<ESP32_IP>` in a browser:
 | Tab | Function |
 |---|---|
 | **Dashboard** | Live temperature, humidity, motion and relay state; relay ON/OFF control |
-| **MQTT** | Broker, port and authentication settings; connection state |
+| **MQTT** | Broker, authentication and MQTT topic settings; connection state |
 | **WiFi** | Change the network or clear stored credentials |
 | **Hardware** | GPIO configuration, visual pinout, relay polarity, OLED address and pin inventory |
 | **Board Info** | Chip, build profile, frequency, memory, MAC address, uptime and capabilities |

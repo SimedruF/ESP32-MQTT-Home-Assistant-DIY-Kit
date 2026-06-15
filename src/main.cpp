@@ -57,11 +57,13 @@ int    g_mqttPort     = 1883;
 String g_mqttUser     = "";
 String g_mqttPass     = "";
 String g_mqttClientId = "esp32-ha-kit";
-
-// Topice MQTT
-static const char* TOPIC_STATE       = "esp32kit/state";
-static const char* TOPIC_RELAY_STATE = "esp32kit/relay/state";
-static const char* TOPIC_RELAY_CMD   = "esp32kit/relay/command";
+String g_topicState       = "esp32kit/state";
+String g_topicRelayState  = "esp32kit/relay/state";
+String g_topicRelayCommand = "esp32kit/relay/command";
+String g_topicDigitalInput = "esp32kit/input/button";
+String g_digitalInputPayloadActive = "PRESSED";
+String g_digitalInputPayloadInactive = "RELEASED";
+bool g_digitalInputRetain = true;
 
 // Topice Home Assistant Auto-Discovery
 static const char* DISC_TEMP   = "homeassistant/sensor/esp32kit/temperature/config";
@@ -78,6 +80,33 @@ String g_selectedCommunication = "wifi_mqtt";
 String g_zigbeeCoordinator = "generic";
 String g_zigbeeCoordinatorHost = "";
 String g_zigbeePairingMode = "auto";
+
+String jsonEscape(const String& value);
+
+bool isValidMqttTopic(const String& topic)
+{
+  if (topic.length() == 0 || topic.length() > 96 ||
+      topic.indexOf('+') >= 0 || topic.indexOf('#') >= 0)
+    return false;
+
+  for (size_t i = 0; i < topic.length(); ++i)
+  {
+    const uint8_t c = static_cast<uint8_t>(topic[i]);
+    if (c == 0 || c < 0x20 || c == 0x7f) return false;
+  }
+  return true;
+}
+
+bool isValidMqttPayload(const String& payload)
+{
+  if (payload.length() == 0 || payload.length() > 48) return false;
+  for (size_t i = 0; i < payload.length(); ++i)
+  {
+    const uint8_t c = static_cast<uint8_t>(payload[i]);
+    if (c == 0 || c < 0x20 || c == 0x7f) return false;
+  }
+  return true;
+}
 
 bool hasNativeIeee802154()
 {
@@ -252,33 +281,97 @@ void loadMqttConfig()
   g_mqttUser     = mqttPrefs.getString("user",     g_mqttUser);
   g_mqttPass     = mqttPrefs.getString("pass",     g_mqttPass);
   g_mqttClientId = mqttPrefs.getString("client_id",g_mqttClientId);
+  const String storedTopicState =
+    mqttPrefs.getString("topic_state", g_topicState);
+  const String storedRelayState =
+    mqttPrefs.getString("relay_state", g_topicRelayState);
+  const String storedRelayCommand =
+    mqttPrefs.getString("relay_cmd", g_topicRelayCommand);
+  const String storedDigitalInputTopic =
+    mqttPrefs.getString("din_topic", g_topicDigitalInput);
+  const String storedDigitalInputActive =
+    mqttPrefs.getString("din_on", g_digitalInputPayloadActive);
+  const String storedDigitalInputInactive =
+    mqttPrefs.getString("din_off", g_digitalInputPayloadInactive);
+  const bool storedDigitalInputRetain =
+    mqttPrefs.getBool("din_retain", g_digitalInputRetain);
   mqttPrefs.end();
-  serialLog.printf("[MQTT] Config NVS: %s:%d  user='%s'  client='%s'\n",
+
+  if (isValidMqttTopic(storedTopicState) &&
+      isValidMqttTopic(storedRelayState) &&
+      isValidMqttTopic(storedRelayCommand) &&
+      storedTopicState != storedRelayState &&
+      storedTopicState != storedRelayCommand &&
+      storedRelayState != storedRelayCommand &&
+      isValidMqttTopic(storedDigitalInputTopic) &&
+      storedDigitalInputTopic != storedTopicState &&
+      storedDigitalInputTopic != storedRelayState &&
+      storedDigitalInputTopic != storedRelayCommand)
+  {
+    g_topicState = storedTopicState;
+    g_topicRelayState = storedRelayState;
+    g_topicRelayCommand = storedRelayCommand;
+    g_topicDigitalInput = storedDigitalInputTopic;
+  }
+  if (isValidMqttPayload(storedDigitalInputActive) &&
+      isValidMqttPayload(storedDigitalInputInactive) &&
+      storedDigitalInputActive != storedDigitalInputInactive)
+  {
+    g_digitalInputPayloadActive = storedDigitalInputActive;
+    g_digitalInputPayloadInactive = storedDigitalInputInactive;
+  }
+  g_digitalInputRetain = storedDigitalInputRetain;
+
+  serialLog.printf("[MQTT] Config NVS: %s:%d user='%s' client='%s'\n",
                    g_mqttBroker.c_str(), g_mqttPort,
                    g_mqttUser.c_str(), g_mqttClientId.c_str());
+  serialLog.printf("[MQTT] Topice: state='%s' relay_state='%s' relay_command='%s'\n",
+                   g_topicState.c_str(), g_topicRelayState.c_str(),
+                   g_topicRelayCommand.c_str());
 }
 
-void saveMqttConfig(const String& broker, int port,
-                    const String& user,   const String& pass,
-                    const String& clientId)
+bool saveMqttConfig(const String& broker, int port,
+                    const String& user, const String& pass,
+                    const String& clientId, const String& topicState,
+                    const String& topicRelayState,
+                    const String& topicRelayCommand,
+                    const String& topicDigitalInput,
+                    const String& digitalInputPayloadActive,
+                    const String& digitalInputPayloadInactive,
+                    bool digitalInputRetain)
 {
   if (!mqttPrefs.begin("mqtt", false))
   {
     serialLog.println("[MQTT] Eroare la deschiderea NVS pentru scriere");
-    return;
+    return false;
   }
   mqttPrefs.putString("broker",    broker);
   mqttPrefs.putInt(   "port",      port);
   mqttPrefs.putString("user",      user);
   mqttPrefs.putString("pass",      pass);
   mqttPrefs.putString("client_id", clientId);
+  mqttPrefs.putString("topic_state", topicState);
+  mqttPrefs.putString("relay_state", topicRelayState);
+  mqttPrefs.putString("relay_cmd", topicRelayCommand);
+  mqttPrefs.putString("din_topic", topicDigitalInput);
+  mqttPrefs.putString("din_on", digitalInputPayloadActive);
+  mqttPrefs.putString("din_off", digitalInputPayloadInactive);
+  mqttPrefs.putBool("din_retain", digitalInputRetain);
   mqttPrefs.end();
   g_mqttBroker   = broker;
   g_mqttPort     = port;
   g_mqttUser     = user;
   g_mqttPass     = pass;
   g_mqttClientId = clientId;
+  g_topicState = topicState;
+  g_topicRelayState = topicRelayState;
+  g_topicRelayCommand = topicRelayCommand;
+  g_topicDigitalInput = topicDigitalInput;
+  g_digitalInputPayloadActive = digitalInputPayloadActive;
+  g_digitalInputPayloadInactive = digitalInputPayloadInactive;
+  g_digitalInputRetain = digitalInputRetain;
   serialLog.println("[MQTT] Configuratie salvata in NVS");
+  return true;
 }
 
 // ============================================================
@@ -330,6 +423,8 @@ volatile float g_humidity       = NAN;
 volatile bool  g_dhtPresent     = false;
 volatile bool  g_motionDetected = false;
 volatile bool  g_relayActive    = false;
+static bool g_digitalInputActive = false;
+static bool g_digitalInputReady = false;
 
 // Accesat doar din loop() (core 1 - Arduino loop task)
 static bool g_mqttConnected      = false;
@@ -354,7 +449,8 @@ void setRelay(bool active)
   xSemaphoreGive(g_mutex);
 
   if (mqttClient.connected())
-    mqttClient.publish(TOPIC_RELAY_STATE, active ? "ON" : "OFF", /*retain=*/true);
+    mqttClient.publish(g_topicRelayState.c_str(), active ? "ON" : "OFF",
+                       /*retain=*/true);
 }
 
 const char* resetReasonName(esp_reset_reason_t reason)
@@ -773,11 +869,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
   for (unsigned int i = 0; i < length; ++i)
     msg += static_cast<char>(payload[i]);
 
-  if (String(topic) == String(TOPIC_RELAY_CMD))
+  if (String(topic) == g_topicRelayCommand)
   {
     if      (msg == "ON")  setRelay(true);
     else if (msg == "OFF") setRelay(false);
   }
+}
+
+void publishDigitalInputState()
+{
+  if (!mqttClient.connected() || !g_digitalInputReady) return;
+  mqttClient.publish(g_topicDigitalInput.c_str(),
+                     g_digitalInputActive
+                       ? g_digitalInputPayloadActive.c_str()
+                       : g_digitalInputPayloadInactive.c_str(),
+                     g_digitalInputRetain);
 }
 
 void publishDiscovery()
@@ -798,7 +904,7 @@ void publishDiscovery()
     String cfg = "{\"name\":\"Temperatura\","
                  "\"device_class\":\"temperature\","
                  "\"unit_of_measurement\":\"\xC2\xB0" "C\","
-                 "\"state_topic\":\"" + String(TOPIC_STATE) + "\","
+                 "\"state_topic\":\"" + jsonEscape(g_topicState) + "\","
                  "\"value_template\":\"{{ value_json.temperature | round(1) }}\","
                  "\"unique_id\":\"esp32kit_temperature\","
                  + dev + "}";
@@ -807,7 +913,7 @@ void publishDiscovery()
     cfg = "{\"name\":\"Umiditate\","
           "\"device_class\":\"humidity\","
           "\"unit_of_measurement\":\"%\","
-          "\"state_topic\":\"" + String(TOPIC_STATE) + "\","
+          "\"state_topic\":\"" + jsonEscape(g_topicState) + "\","
           "\"value_template\":\"{{ value_json.humidity | round(1) }}\","
           "\"unique_id\":\"esp32kit_humidity\","
           + dev + "}";
@@ -824,7 +930,7 @@ void publishDiscovery()
   {
     String cfg = "{\"name\":\"Miscare\","
                  "\"device_class\":\"motion\","
-                 "\"state_topic\":\"" + String(TOPIC_STATE) + "\","
+                 "\"state_topic\":\"" + jsonEscape(g_topicState) + "\","
                  "\"value_template\":\"{{ value_json.motion }}\","
                  "\"payload_on\":\"true\","
                  "\"payload_off\":\"false\","
@@ -841,8 +947,8 @@ void publishDiscovery()
   if (g_hardware.relayPin != PIN_DISABLED)
   {
     String cfg = "{\"name\":\"Releu\","
-                 "\"state_topic\":\"" + String(TOPIC_RELAY_STATE) + "\","
-                 "\"command_topic\":\"" + String(TOPIC_RELAY_CMD) + "\","
+                 "\"state_topic\":\"" + jsonEscape(g_topicRelayState) + "\","
+                 "\"command_topic\":\"" + jsonEscape(g_topicRelayCommand) + "\","
                  "\"payload_on\":\"ON\","
                  "\"payload_off\":\"OFF\","
                  "\"unique_id\":\"esp32kit_relay\","
@@ -870,9 +976,10 @@ bool mqttReconnect()
   if (ok)
   {
     serialLog.println("[MQTT] Conectat!");
-    mqttClient.subscribe(TOPIC_RELAY_CMD);
+    mqttClient.subscribe(g_topicRelayCommand.c_str());
     g_mqttConnected      = true;
     g_discoveryPublished = false;   // re-publica discovery dupa reconectare
+    publishDigitalInputState();
   }
   else
   {
@@ -927,12 +1034,17 @@ void publishState()
   json += motion ? "true" : "false";
   json += ",\"relay\":";
   json += relay  ? "true" : "false";
+  json += ",\"digital_input\":";
+  json += g_digitalInputReady
+    ? (g_digitalInputActive ? "true" : "false")
+    : "null";
   json += ",\"uptime\":";
   json += String(millis() / 1000);
   json += "}";
 
-  mqttClient.publish(TOPIC_STATE, json.c_str());
-  mqttClient.publish(TOPIC_RELAY_STATE, relay ? "ON" : "OFF", true);
+  mqttClient.publish(g_topicState.c_str(), json.c_str());
+  mqttClient.publish(g_topicRelayState.c_str(), relay ? "ON" : "OFF", true);
+  publishDigitalInputState();
 }
 
 // ============================================================
@@ -1335,6 +1447,8 @@ void handleData(WebServer& server)
   json += g_hardware.pirPin != PIN_DISABLED ? "true" : "false";
   json += ",\"relay_available\":";
   json += g_hardware.relayPin != PIN_DISABLED ? "true" : "false";
+  json += ",\"digital_input_available\":";
+  json += g_hardware.digitalInputPin != PIN_DISABLED ? "true" : "false";
   json += ",\"oled_available\":";
   json += g_oledReady ? "true" : "false";
   json += ",\"heartbeat_available\":";
@@ -1347,6 +1461,10 @@ void handleData(WebServer& server)
   json += motion ? "true" : "false";
   json += ",\"relay\":";
   json += relay  ? "true" : "false";
+  json += ",\"digital_input\":";
+  json += g_digitalInputReady
+    ? (g_digitalInputActive ? "true" : "false")
+    : "null";
   json += ",\"mqtt_connected\":";
   json += g_mqttConnected ? "true" : "false";
   json += ",\"uptime_ms\":";
@@ -1464,13 +1582,25 @@ void handleApiRgbLedPost(WebServer& server)
 // GET /api/mqtt_config  → returneaza configuratia curenta (fara parola)
 void handleMqttConfigGet(WebServer& server)
 {
-  String json = "{";
-  json += "\"broker\":\"" + g_mqttBroker + "\",";
+  String json;
+  json.reserve(420);
+  json = "{\"broker\":\"" + jsonEscape(g_mqttBroker) + "\",";
   json += "\"port\":"      + String(g_mqttPort) + ",";
-  json += "\"user\":\""   + g_mqttUser + "\",";
-  json += "\"client_id\":\"" + g_mqttClientId + "\",";
+  json += "\"user\":\""   + jsonEscape(g_mqttUser) + "\",";
+  json += "\"client_id\":\"" + jsonEscape(g_mqttClientId) + "\",";
+  json += "\"topic_state\":\"" + jsonEscape(g_topicState) + "\",";
+  json += "\"topic_relay_state\":\"" + jsonEscape(g_topicRelayState) + "\",";
+  json += "\"topic_relay_command\":\"" + jsonEscape(g_topicRelayCommand) + "\",";
+  json += "\"topic_digital_input\":\"" + jsonEscape(g_topicDigitalInput) + "\",";
+  json += "\"digital_input_payload_active\":\"" +
+          jsonEscape(g_digitalInputPayloadActive) + "\",";
+  json += "\"digital_input_payload_inactive\":\"" +
+          jsonEscape(g_digitalInputPayloadInactive) + "\",";
+  json += "\"digital_input_retain\":" +
+          String(g_digitalInputRetain ? "true" : "false") + ",";
   json += "\"connected\":" + String(g_mqttConnected ? "true" : "false");
   json += "}";
+  server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
 }
 
@@ -1486,13 +1616,80 @@ void handleMqttConfigPost(WebServer& server)
   String broker   = server.arg("broker");
   int    port     = server.hasArg("port") ? server.arg("port").toInt() : 1883;
   String user     = server.hasArg("user")      ? server.arg("user")      : "";
-  String pass     = server.hasArg("pass")      ? server.arg("pass")      : "";
+  String pass = server.hasArg("pass") && server.arg("pass").length()
+    ? server.arg("pass") : g_mqttPass;
   String clientId = server.hasArg("client_id") ? server.arg("client_id") : "esp32-ha-kit";
+  String topicState = server.hasArg("topic_state")
+    ? server.arg("topic_state") : g_topicState;
+  String topicRelayState = server.hasArg("topic_relay_state")
+    ? server.arg("topic_relay_state") : g_topicRelayState;
+  String topicRelayCommand = server.hasArg("topic_relay_command")
+    ? server.arg("topic_relay_command") : g_topicRelayCommand;
+  String topicDigitalInput = server.hasArg("topic_digital_input")
+    ? server.arg("topic_digital_input") : g_topicDigitalInput;
+  String digitalInputPayloadActive =
+    server.hasArg("digital_input_payload_active")
+      ? server.arg("digital_input_payload_active")
+      : g_digitalInputPayloadActive;
+  String digitalInputPayloadInactive =
+    server.hasArg("digital_input_payload_inactive")
+      ? server.arg("digital_input_payload_inactive")
+      : g_digitalInputPayloadInactive;
+  const bool digitalInputRetain =
+    server.hasArg("digital_input_retain") &&
+    (server.arg("digital_input_retain") == "1" ||
+     server.arg("digital_input_retain") == "true");
+
+  broker.trim();
+  clientId.trim();
+  topicState.trim();
+  topicRelayState.trim();
+  topicRelayCommand.trim();
+  topicDigitalInput.trim();
+  digitalInputPayloadActive.trim();
+  digitalInputPayloadInactive.trim();
 
   // Validare port
   if (port <= 0 || port > 65535) port = 1883;
 
-  saveMqttConfig(broker, port, user, pass, clientId);
+  if (!isValidMqttTopic(topicState) ||
+      !isValidMqttTopic(topicRelayState) ||
+      !isValidMqttTopic(topicRelayCommand) ||
+      !isValidMqttTopic(topicDigitalInput))
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"topic MQTT invalid: maxim 96 caractere, fara +, # sau caractere de control\"}");
+    return;
+  }
+  if (topicState == topicRelayState ||
+      topicState == topicRelayCommand ||
+      topicState == topicDigitalInput ||
+      topicRelayState == topicRelayCommand ||
+      topicRelayState == topicDigitalInput ||
+      topicRelayCommand == topicDigitalInput)
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"topicele MQTT trebuie sa fie distincte\"}");
+    return;
+  }
+  if (!isValidMqttPayload(digitalInputPayloadActive) ||
+      !isValidMqttPayload(digitalInputPayloadInactive) ||
+      digitalInputPayloadActive == digitalInputPayloadInactive)
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"payload buton invalid\"}");
+    return;
+  }
+
+  if (!saveMqttConfig(broker, port, user, pass, clientId, topicState,
+                      topicRelayState, topicRelayCommand, topicDigitalInput,
+                      digitalInputPayloadActive, digitalInputPayloadInactive,
+                      digitalInputRetain))
+  {
+    server.send(500, "application/json",
+                "{\"ok\":false,\"error\":\"salvarea configuratiei in NVS a esuat\"}");
+    return;
+  }
 
   // Deconecteaza clientul MQTT pentru a forta reconectare cu noile setari
   if (mqttClient.connected()) mqttClient.disconnect();
@@ -1666,6 +1863,8 @@ void handleHardwareConfigPost(WebServer& server)
   if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"pir_pin invalid\"}"); return; }
   config.relayPin = parsePinArgument(server, "relay_pin", ok);
   if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"relay_pin invalid\"}"); return; }
+  config.digitalInputPin = parsePinArgument(server, "digital_input_pin", ok);
+  if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"input pin invalid\"}"); return; }
   config.heartbeatPin = parsePinArgument(server, "heartbeat_pin", ok);
   if (!ok) { server.send(400, "application/json", "{\"ok\":false,\"error\":\"heartbeat_pin invalid\"}"); return; }
   config.sdaPin = parsePinArgument(server, "sda_pin", ok);
@@ -1676,6 +1875,14 @@ void handleHardwareConfigPost(WebServer& server)
   config.relayActiveLow = !server.hasArg("relay_active_low") ||
                           server.arg("relay_active_low") == "1" ||
                           server.arg("relay_active_low") == "true";
+  config.digitalInputActiveLow =
+    !server.hasArg("digital_input_active_low") ||
+    server.arg("digital_input_active_low") == "1" ||
+    server.arg("digital_input_active_low") == "true";
+  const int digitalInputMode = server.hasArg("digital_input_mode")
+    ? server.arg("digital_input_mode").toInt()
+    : DIGITAL_INPUT_PULLUP;
+  config.digitalInputMode = static_cast<uint8_t>(digitalInputMode);
 
   int oledAddress = server.hasArg("oled_address") ? server.arg("oled_address").toInt() : 0x3C;
   config.oledAddress = static_cast<uint8_t>(oledAddress);
@@ -1749,6 +1956,20 @@ void setup()
     pinMode(g_hardware.relayPin, OUTPUT);
     const uint8_t activeLevel = g_hardware.relayActiveLow ? LOW : HIGH;
     digitalWrite(g_hardware.relayPin, !activeLevel);
+  }
+
+  if (g_hardware.digitalInputPin != PIN_DISABLED)
+  {
+    uint8_t inputMode = INPUT;
+    if (g_hardware.digitalInputMode == DIGITAL_INPUT_PULLUP)
+      inputMode = INPUT_PULLUP;
+    else if (g_hardware.digitalInputMode == DIGITAL_INPUT_PULLDOWN)
+      inputMode = INPUT_PULLDOWN;
+    pinMode(g_hardware.digitalInputPin, inputMode);
+    const bool rawHigh = digitalRead(g_hardware.digitalInputPin) == HIGH;
+    g_digitalInputActive =
+      g_hardware.digitalInputActiveLow ? !rawHigh : rawHigh;
+    g_digitalInputReady = true;
   }
 
   if (g_hardware.heartbeatPin != PIN_DISABLED)
@@ -1868,7 +2089,7 @@ void setup()
   loadMqttConfig();
   mqttClient.setServer(g_mqttBroker.c_str(), g_mqttPort);
   mqttClient.setCallback(mqttCallback);
-  mqttClient.setBufferSize(512);
+  mqttClient.setBufferSize(768);
 
   // xTaskCreate este portabil pe tintele single-core si dual-core.
   xTaskCreate(taskSensors, "taskSensors", 4096, nullptr, 2, nullptr);
@@ -1880,9 +2101,10 @@ void setup()
   if (g_mdnsReady)
     serialLog.println("[Web]  http://esp32-ha-kit.local");
   serialLog.println("[MQTT] Broker: " + g_mqttBroker + ":" + String(g_mqttPort));
-  serialLog.printf("[Pini] DHT=%d PIR=%d Releu=%d LED=%d SDA=%d SCL=%d\n",
+  serialLog.printf("[Pini] DHT=%d PIR=%d Releu=%d Input=%d LED=%d SDA=%d SCL=%d\n",
                    g_hardware.dhtPin, g_hardware.pirPin, g_hardware.relayPin,
-                   g_hardware.heartbeatPin, g_hardware.sdaPin, g_hardware.sclPin);
+                   g_hardware.digitalInputPin, g_hardware.heartbeatPin,
+                   g_hardware.sdaPin, g_hardware.sclPin);
   serialLog.println("=========================================\n");
 }
 
@@ -1894,6 +2116,39 @@ void loop()
   if (g_restartAt != 0 && static_cast<long>(millis() - g_restartAt) >= 0)
   {
     ESP.restart();
+  }
+
+  // Intrare digitala cu debounce pentru butoane si contacte mecanice.
+  static bool inputInitialized = false;
+  static bool lastRawInput = false;
+  static bool stableInput = false;
+  static unsigned long inputChangedAt = 0;
+  if (g_digitalInputReady)
+  {
+    const bool rawHigh = digitalRead(g_hardware.digitalInputPin) == HIGH;
+    const bool active =
+      g_hardware.digitalInputActiveLow ? !rawHigh : rawHigh;
+    if (!inputInitialized)
+    {
+      inputInitialized = true;
+      lastRawInput = active;
+      stableInput = active;
+      inputChangedAt = millis();
+    }
+    else
+    {
+      if (active != lastRawInput)
+      {
+        lastRawInput = active;
+        inputChangedAt = millis();
+      }
+      if (stableInput != lastRawInput && millis() - inputChangedAt >= 40)
+      {
+        stableInput = lastRawInput;
+        g_digitalInputActive = stableInput;
+        publishState();
+      }
+    }
   }
 
   // Detectie schimbare stare PIR → publish imediat

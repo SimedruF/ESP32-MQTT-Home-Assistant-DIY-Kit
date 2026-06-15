@@ -51,6 +51,7 @@ const char* assignedRole(const HardwareConfig& config, int pin)
   if (config.dhtPin == pin) return "DHT";
   if (config.pirPin == pin) return "PIR";
   if (config.relayPin == pin) return "relay";
+  if (config.digitalInputPin == pin) return "intrare digitala";
   if (config.heartbeatPin == pin) return "heartbeat";
   if (config.sdaPin == pin) return "I2C SDA";
   if (config.sclPin == pin) return "I2C SCL";
@@ -82,17 +83,23 @@ const char* buildProfileName()
 HardwareConfig HardwareConfigStore::defaults() const
 {
 #if defined(BOARD_LILYGO_T_ZIGBEE)
-  return {4, 5, 6, 7, 8, 1, true, 0x3C};
+  return {4, 5, 6, PIN_DISABLED, 7, 8, 1, true, true,
+          DIGITAL_INPUT_PULLUP, 0x3C};
 #elif defined(BOARD_ESP32_C6_SUPERMINI)
-  return {0, 1, 2, 3, 20, 19, true, 0x3C};
+  return {0, 1, 2, PIN_DISABLED, 3, 20, 19, true, true,
+          DIGITAL_INPUT_PULLUP, 0x3C};
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-  return {4, 5, 7, 18, 8, 9, true, 0x3C};
+  return {4, 5, 7, PIN_DISABLED, 18, 8, 9, true, true,
+          DIGITAL_INPUT_PULLUP, 0x3C};
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
-  return {2, 3, 7, 18, 6, 10, true, 0x3C};
+  return {2, 3, 7, PIN_DISABLED, 18, 6, 10, true, true,
+          DIGITAL_INPUT_PULLUP, 0x3C};
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
-  return {4, 3, 7, 10, 6, 5, true, 0x3C};
+  return {4, 3, 7, PIN_DISABLED, 10, 6, 5, true, true,
+          DIGITAL_INPUT_PULLUP, 0x3C};
 #else
-  return {4, 32, 23, 18, 21, 22, true, 0x3C};
+  return {4, 32, 23, PIN_DISABLED, 18, 21, 22, true, true,
+          DIGITAL_INPUT_PULLUP, 0x3C};
 #endif
 }
 
@@ -108,10 +115,15 @@ HardwareConfig HardwareConfigStore::load()
   config.dhtPin = _preferences.getChar("dht", config.dhtPin);
   config.pirPin = _preferences.getChar("pir", config.pirPin);
   config.relayPin = _preferences.getChar("relay", config.relayPin);
+  config.digitalInputPin = _preferences.getChar("din", config.digitalInputPin);
   config.heartbeatPin = _preferences.getChar("heart", config.heartbeatPin);
   config.sdaPin = _preferences.getChar("sda", config.sdaPin);
   config.sclPin = _preferences.getChar("scl", config.sclPin);
   config.relayActiveLow = _preferences.getBool("relay_low", config.relayActiveLow);
+  config.digitalInputActiveLow =
+    _preferences.getBool("din_low", config.digitalInputActiveLow);
+  config.digitalInputMode =
+    _preferences.getUChar("din_mode", config.digitalInputMode);
   config.oledAddress = _preferences.getUChar("oled_addr", config.oledAddress);
   _preferences.end();
 
@@ -134,10 +146,13 @@ bool HardwareConfigStore::save(const HardwareConfig& config)
   ok &= _preferences.putChar("dht", config.dhtPin) > 0;
   ok &= _preferences.putChar("pir", config.pirPin) > 0;
   ok &= _preferences.putChar("relay", config.relayPin) > 0;
+  ok &= _preferences.putChar("din", config.digitalInputPin) > 0;
   ok &= _preferences.putChar("heart", config.heartbeatPin) > 0;
   ok &= _preferences.putChar("sda", config.sdaPin) > 0;
   ok &= _preferences.putChar("scl", config.sclPin) > 0;
   ok &= _preferences.putBool("relay_low", config.relayActiveLow) > 0;
+  ok &= _preferences.putBool("din_low", config.digitalInputActiveLow) > 0;
+  ok &= _preferences.putUChar("din_mode", config.digitalInputMode) > 0;
   ok &= _preferences.putUChar("oled_addr", config.oledAddress) > 0;
   _preferences.end();
   return ok;
@@ -242,6 +257,7 @@ bool validateHardwareConfig(const HardwareConfig& config, String& error)
     {"DHT", config.dhtPin, true},
     {"PIR", config.pirPin, false},
     {"releu", config.relayPin, true},
+    {"intrare digitala", config.digitalInputPin, false},
     {"heartbeat", config.heartbeatPin, true},
     {"I2C SDA", config.sdaPin, true},
     {"I2C SCL", config.sclPin, true},
@@ -254,6 +270,10 @@ bool validateHardwareConfig(const HardwareConfig& config, String& error)
 
   if (config.oledAddress != 0x3C && config.oledAddress != 0x3D) {
     error = F("adresa OLED trebuie sa fie 0x3C sau 0x3D");
+    return false;
+  }
+  if (config.digitalInputMode > DIGITAL_INPUT_PULLDOWN) {
+    error = F("modul intrarii digitale este invalid");
     return false;
   }
 
@@ -304,6 +324,8 @@ String hardwareConfigToJson(const HardwareConfig& config)
   json += config.pirPin;
   json += F(",\"relay_pin\":");
   json += config.relayPin;
+  json += F(",\"digital_input_pin\":");
+  json += config.digitalInputPin;
   json += F(",\"heartbeat_pin\":");
   json += config.heartbeatPin;
   json += F(",\"sda_pin\":");
@@ -312,6 +334,10 @@ String hardwareConfigToJson(const HardwareConfig& config)
   json += config.sclPin;
   json += F(",\"relay_active_low\":");
   json += config.relayActiveLow ? F("true") : F("false");
+  json += F(",\"digital_input_active_low\":");
+  json += config.digitalInputActiveLow ? F("true") : F("false");
+  json += F(",\"digital_input_mode\":");
+  json += config.digitalInputMode;
   json += F(",\"oled_address\":");
   json += config.oledAddress;
   json += '}';

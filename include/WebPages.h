@@ -279,8 +279,49 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
     <div class="form-group">
       <label class="form-label">Parola <span style="color:#94a3b8">(optional)</span></label>
       <input type="password" id="mqttPass" class="form-input" placeholder="las gol daca nu e necesara">
-      <small style="color:#94a3b8;font-size:.82em">Parola nu este afisata dupa salvare din motive de securitate.</small>
+      <small style="color:#94a3b8;font-size:.82em">Parola nu este afisata dupa salvare; lasa campul gol pentru a pastra parola curenta.</small>
     </div>
+
+    <h3 style="margin:24px 0 14px;color:#1e293b">Configuratie topice MQTT</h3>
+    <div class="form-group">
+      <label class="form-label">Topic stare senzori</label>
+      <input type="text" id="mqttTopicState" class="form-input"
+             placeholder="esp32kit/state" maxlength="96">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Topic stare releu</label>
+      <input type="text" id="mqttTopicRelayState" class="form-input"
+             placeholder="esp32kit/relay/state" maxlength="96">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Topic comanda releu</label>
+      <input type="text" id="mqttTopicRelayCommand" class="form-input"
+             placeholder="esp32kit/relay/command" maxlength="96">
+      <small style="color:#64748b;font-size:.82em">
+        Topicele trebuie sa fie distincte si nu pot contine wildcard-urile + sau #.
+      </small>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Topic buton</label>
+      <input type="text" id="mqttTopicDigitalInput" class="form-input"
+             placeholder="esp32kit/input/button" maxlength="96">
+    </div>
+    <div class="hw-grid">
+      <div class="form-group">
+        <label class="form-label">Payload apasat</label>
+        <input type="text" id="mqttDigitalInputActive" class="form-input"
+               placeholder="PRESSED" maxlength="48">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Payload eliberat</label>
+        <input type="text" id="mqttDigitalInputInactive" class="form-input"
+               placeholder="RELEASED" maxlength="48">
+      </div>
+    </div>
+    <label class="hw-check">
+      <input type="checkbox" id="mqttDigitalInputRetain"> MQTT retain
+    </label>
+
     <div class="btn-row">
       <button class="btn btn-primary" onclick="saveMqttCfg()">&#128190; Salveaza si aplica</button>
       <button class="btn" style="background:#64748b;color:#fff;flex:0 0 auto" onclick="loadMqttCfg()">&#8635;</button>
@@ -290,9 +331,9 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
     <div class="info-box" style="margin-top:18px">
       <strong>&#8505; Topice MQTT folosite:</strong>
       <ul>
-        <li><code>esp32kit/state</code> &mdash; JSON: temperatura, umiditate, miscare, releu</li>
-        <li><code>esp32kit/relay/state</code> &mdash; starea releului (ON / OFF)</li>
-        <li><code>esp32kit/relay/command</code> &mdash; comanda releu din HA (ON / OFF)</li>
+        <li><code id="mqttTopicStateInfo">esp32kit/state</code> &mdash; JSON: temperatura, umiditate, miscare, releu</li>
+        <li><code id="mqttTopicRelayStateInfo">esp32kit/relay/state</code> &mdash; starea releului (ON / OFF)</li>
+        <li><code id="mqttTopicRelayCommandInfo">esp32kit/relay/command</code> &mdash; comanda releu din HA (ON / OFF)</li>
         <li>Auto-discovery Home Assistant publicat la fiecare conectare la broker</li>
       </ul>
     </div>
@@ -418,6 +459,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
       <div class="form-group"><label class="form-label">DHT11 DATA</label><select id="hwDht" class="form-input"></select></div>
       <div class="form-group"><label class="form-label">PIR OUT</label><select id="hwPir" class="form-input"></select></div>
       <div class="form-group"><label class="form-label">Releu IN</label><select id="hwRelay" class="form-input"></select></div>
+      <div class="form-group"><label class="form-label">Buton / intrare digitala</label><select id="hwDigitalInput" class="form-input"></select></div>
       <div class="form-group"><label class="form-label">LED heartbeat</label><select id="hwHeartbeat" class="form-input"></select></div>
       <div class="form-group"><label class="form-label">OLED SDA</label><select id="hwSda" class="form-input"></select></div>
       <div class="form-group"><label class="form-label">OLED SCL</label><select id="hwScl" class="form-input"></select></div>
@@ -426,6 +468,15 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
         <select id="hwOledAddress" class="form-input"><option value="60">0x3C</option><option value="61">0x3D</option></select>
       </div>
       <label class="hw-check"><input type="checkbox" id="hwRelayLow"> Releu activ pe LOW</label>
+      <div class="form-group">
+        <label class="form-label">Mod intrare digitala</label>
+        <select id="hwDigitalInputMode" class="form-input">
+          <option value="1">INPUT_PULLUP</option>
+          <option value="2">INPUT_PULLDOWN</option>
+          <option value="0">INPUT fara rezistenta interna</option>
+        </select>
+      </div>
+      <label class="hw-check"><input type="checkbox" id="hwDigitalInputLow"> Buton activ pe LOW</label>
     </div>
 
     <div class="btn-row">
@@ -646,7 +697,12 @@ var englishText = {
   'Utilizator':'Username',
   '(optional)':'(optional)',
   'Parola':'Password',
-  'Parola nu este afisata dupa salvare din motive de securitate.':'The password is not displayed after saving for security reasons.',
+  'Parola nu este afisata dupa salvare; lasa campul gol pentru a pastra parola curenta.':'The password is not displayed after saving; leave the field empty to keep the current password.',
+  'Configuratie topice MQTT':'MQTT topic configuration',
+  'Topic stare senzori':'Sensor state topic',
+  'Topic stare releu':'Relay state topic',
+  'Topic comanda releu':'Relay command topic',
+  'Topicele trebuie sa fie distincte si nu pot contine wildcard-urile + sau #.':'Topics must be distinct and cannot contain the + or # wildcards.',
   'Salveaza si aplica':'Save and apply',
   'Topice MQTT folosite:':'MQTT topics:',
   'JSON: temperatura, umiditate, miscare, releu':'JSON: temperature, humidity, motion, relay',
@@ -1269,6 +1325,26 @@ function loadMqttCfg() {
       document.getElementById('mqttClientId').value = d.client_id || 'esp32-ha-kit';
       document.getElementById('mqttUser').value     = d.user     || '';
       document.getElementById('mqttPass').value     = '';  // parola nu se returneaza
+      document.getElementById('mqttTopicState').value =
+        d.topic_state || 'esp32kit/state';
+      document.getElementById('mqttTopicRelayState').value =
+        d.topic_relay_state || 'esp32kit/relay/state';
+      document.getElementById('mqttTopicRelayCommand').value =
+        d.topic_relay_command || 'esp32kit/relay/command';
+      document.getElementById('mqttTopicDigitalInput').value =
+        d.topic_digital_input || 'esp32kit/input/button';
+      document.getElementById('mqttDigitalInputActive').value =
+        d.digital_input_payload_active || 'PRESSED';
+      document.getElementById('mqttDigitalInputInactive').value =
+        d.digital_input_payload_inactive || 'RELEASED';
+      document.getElementById('mqttDigitalInputRetain').checked =
+        d.digital_input_retain !== false;
+      document.getElementById('mqttTopicStateInfo').textContent =
+        d.topic_state || 'esp32kit/state';
+      document.getElementById('mqttTopicRelayStateInfo').textContent =
+        d.topic_relay_state || 'esp32kit/relay/state';
+      document.getElementById('mqttTopicRelayCommandInfo').textContent =
+        d.topic_relay_command || 'esp32kit/relay/command';
 
       var bar = document.getElementById('mqttCfgBar');
       if (d.connected) {
@@ -1294,9 +1370,38 @@ function saveMqttCfg() {
   var clientId = document.getElementById('mqttClientId').value.trim() || 'esp32-ha-kit';
   var user     = document.getElementById('mqttUser').value.trim();
   var pass     = document.getElementById('mqttPass').value;
+  var topicState = document.getElementById('mqttTopicState').value.trim();
+  var topicRelayState = document.getElementById('mqttTopicRelayState').value.trim();
+  var topicRelayCommand = document.getElementById('mqttTopicRelayCommand').value.trim();
+  var topicDigitalInput = document.getElementById('mqttTopicDigitalInput').value.trim();
+  var digitalInputActive = document.getElementById('mqttDigitalInputActive').value.trim();
+  var digitalInputInactive = document.getElementById('mqttDigitalInputInactive').value.trim();
+  var digitalInputRetain = document.getElementById('mqttDigitalInputRetain').checked;
 
   if (!broker) {
     showMqttMsg(tr('Adresa IP broker este obligatorie!', 'Broker IP address is required!'), 'err');
+    return;
+  }
+  var topics = [topicState, topicRelayState, topicRelayCommand, topicDigitalInput];
+  if (topics.some(function(topic) {
+    return !topic || topic.length > 96 || /[+#\x00-\x1f\x7f]/.test(topic);
+  })) {
+    showMqttMsg(
+      tr('Topic MQTT invalid: maxim 96 caractere, fara + sau #.',
+         'Invalid MQTT topic: maximum 96 characters, without + or #.'),
+      'err');
+    return;
+  }
+  if (!digitalInputActive || !digitalInputInactive ||
+      digitalInputActive.length > 48 || digitalInputInactive.length > 48 ||
+      digitalInputActive === digitalInputInactive ||
+      /[\x00-\x1f\x7f]/.test(digitalInputActive + digitalInputInactive)) {
+    showMqttMsg('Payload buton invalid.', 'err');
+    return;
+  }
+  if (new Set(topics).size !== topics.length) {
+    showMqttMsg(tr('Topicele MQTT trebuie sa fie distincte.',
+                   'MQTT topics must be distinct.'), 'err');
     return;
   }
 
@@ -1306,7 +1411,14 @@ function saveMqttCfg() {
            + '&port='      + encodeURIComponent(port)
            + '&client_id=' + encodeURIComponent(clientId)
            + '&user='      + encodeURIComponent(user)
-           + '&pass='      + encodeURIComponent(pass);
+           + '&pass='      + encodeURIComponent(pass)
+           + '&topic_state=' + encodeURIComponent(topicState)
+           + '&topic_relay_state=' + encodeURIComponent(topicRelayState)
+           + '&topic_relay_command=' + encodeURIComponent(topicRelayCommand)
+           + '&topic_digital_input=' + encodeURIComponent(topicDigitalInput)
+           + '&digital_input_payload_active=' + encodeURIComponent(digitalInputActive)
+           + '&digital_input_payload_inactive=' + encodeURIComponent(digitalInputInactive)
+           + '&digital_input_retain=' + (digitalInputRetain ? '1' : '0');
 
   fetch('/api/mqtt_config', {
     method: 'POST',
@@ -1552,6 +1664,7 @@ function translateHardwareText(value) {
     'UART intern catre TLSR8258':'internal UART to TLSR8258',
     'buton USER onboard si pin de boot/strapping':'onboard USER button and boot/strapping pin',
     'buton BOOT onboard si pin de boot/strapping':'onboard BOOT button and boot/strapping pin',
+    'intrare digitala':'digital input',
     'LED albastru onboard si pin de boot/strapping':'onboard blue LED and boot/strapping pin',
     'USB OTG/JTAG implicit':'default USB OTG/JTAG',
     'UART0 folosit pentru programare/log':'UART0 used for programming/logging',
@@ -1585,6 +1698,7 @@ function selectedPinRoles() {
   var roles = {};
   var fields = [
     ['hwDht', 'DHT'], ['hwPir', 'PIR'], ['hwRelay', 'releu'],
+    ['hwDigitalInput', 'intrare digitala'],
     ['hwHeartbeat', 'heartbeat'], ['hwSda', 'I2C SDA'], ['hwScl', 'I2C SCL']
   ];
   fields.forEach(function(field) {
@@ -1680,7 +1794,7 @@ function renderBoardPinout() {
 }
 
 function bindPinoutPreview() {
-  ['hwDht','hwPir','hwRelay','hwHeartbeat','hwSda','hwScl'].forEach(function(id) {
+  ['hwDht','hwPir','hwRelay','hwDigitalInput','hwHeartbeat','hwSda','hwScl'].forEach(function(id) {
     document.getElementById(id).onchange = renderBoardPinout;
   });
 }
@@ -1725,10 +1839,15 @@ function loadHardwareCfg() {
       fillPinSelect('hwDht', d.pins, d.dht_pin, true);
       fillPinSelect('hwPir', d.pins, d.pir_pin, false);
       fillPinSelect('hwRelay', d.pins, d.relay_pin, true);
+      fillPinSelect('hwDigitalInput', d.pins, d.digital_input_pin, false);
       fillPinSelect('hwHeartbeat', d.pins, d.heartbeat_pin, true);
       fillPinSelect('hwSda', d.pins, d.sda_pin, true);
       fillPinSelect('hwScl', d.pins, d.scl_pin, true);
       document.getElementById('hwRelayLow').checked = !!d.relay_active_low;
+      document.getElementById('hwDigitalInputLow').checked =
+        !!d.digital_input_active_low;
+      document.getElementById('hwDigitalInputMode').value =
+        String(d.digital_input_mode);
       document.getElementById('hwOledAddress').value = String(d.oled_address);
       updateHardwareLabels(d);
       bindPinoutPreview();
@@ -1763,10 +1882,13 @@ function saveHardware() {
       'dht_pin=' + encodeURIComponent(document.getElementById('hwDht').value)
     + '&pir_pin=' + encodeURIComponent(document.getElementById('hwPir').value)
     + '&relay_pin=' + encodeURIComponent(document.getElementById('hwRelay').value)
+    + '&digital_input_pin=' + encodeURIComponent(document.getElementById('hwDigitalInput').value)
     + '&heartbeat_pin=' + encodeURIComponent(document.getElementById('hwHeartbeat').value)
     + '&sda_pin=' + encodeURIComponent(document.getElementById('hwSda').value)
     + '&scl_pin=' + encodeURIComponent(document.getElementById('hwScl').value)
     + '&relay_active_low=' + (document.getElementById('hwRelayLow').checked ? '1' : '0')
+    + '&digital_input_active_low=' + (document.getElementById('hwDigitalInputLow').checked ? '1' : '0')
+    + '&digital_input_mode=' + encodeURIComponent(document.getElementById('hwDigitalInputMode').value)
     + '&oled_address=' + encodeURIComponent(document.getElementById('hwOledAddress').value);
 
   showHwMsg(tr('Se valideaza si se salveaza...', 'Validating and saving...'), 'info');

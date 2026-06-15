@@ -270,13 +270,17 @@ Accesează `http://<IP_ESP32>` din browser:
 | Tab | Funcționalitate |
 |---|---|
 | **Dashboard** | Monitorizare live: temperatură, umiditate, mișcare, releu; control ON/OFF releu |
-| **MQTT** | Configurare broker, port, autentificare; status conexiune |
+| **MQTT** | Configurare broker, port, autentificare și topice; status conexiune |
 | **WiFi** | Schimbare rețea WiFi; ștergere credențiale |
 | **Hardware** | Configurare GPIO, pinout vizual, polaritate releu, adresă OLED și inventar pini |
 | **Fișiere** | Listare, upload și download pentru fișierele din partiția SPIFFS |
 | **Board Info** | Informații tehnice: chip, profil build, frecvență, memorie, MAC, uptime |
 
 Date actualizate automat la **2 secunde** fără reîncărcare pagină.
+
+În tab-ul **MQTT** pot fi configurate și topicele pentru starea senzorilor,
+starea releului și comanda releului. Valorile sunt salvate în NVS, iar clientul
+se reconectează și republică Home Assistant Auto-Discovery cu noile topice.
 
 Tab-ul **Fișiere** afișează capacitatea totală, spațiul utilizat și fișierele din
 SPIFFS. Upload-ul păstrează numai numele fișierului, înlocuiește caracterele
