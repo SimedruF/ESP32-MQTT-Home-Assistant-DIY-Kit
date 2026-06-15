@@ -273,9 +273,22 @@ Accesează `http://<IP_ESP32>` din browser:
 | **MQTT** | Configurare broker, port, autentificare; status conexiune |
 | **WiFi** | Schimbare rețea WiFi; ștergere credențiale |
 | **Hardware** | Configurare GPIO, pinout vizual, polaritate releu, adresă OLED și inventar pini |
+| **Fișiere** | Listare, upload și download pentru fișierele din partiția SPIFFS |
 | **Board Info** | Informații tehnice: chip, profil build, frecvență, memorie, MAC, uptime |
 
 Date actualizate automat la **2 secunde** fără reîncărcare pagină.
+
+Tab-ul **Fișiere** afișează capacitatea totală, spațiul utilizat și fișierele din
+SPIFFS. Upload-ul păstrează numai numele fișierului, înlocuiește caracterele
+nesigure și suprascrie un fișier existent cu același nume. Fișierele pot fi
+descărcate direct din listă.
+
+La fiecare pornire, firmware-ul adaugă în `/reset-log.txt` motivul resetului,
+profilul plăcii și identificarea firmware-ului. După panică sau watchdog, dacă
+ESP-IDF a generat un coredump valid, jurnalul include motivul panicii, task-ul,
+PC-ul, registrele și backtrace-ul disponibil. Imaginea brută este copiată în
+`/last-coredump.bin`, de unde poate fi descărcată din același tab pentru analiză
+offline. Jurnalul este recreat când ajunge la 64 KB.
 
 ---
 

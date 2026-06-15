@@ -24,6 +24,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <SPIFFS.h>
 #include <WiFiWebManager.h>
 #include <WebPages.h>
 #include <HardwareConfig.h>
@@ -34,6 +35,8 @@
 #include <Adafruit_SSD1306.h>
 #include <Preferences.h>
 #include <esp_chip_info.h>
+#include <esp_core_dump.h>
+#include <esp_partition.h>
 #include <esp_system.h>
 #include <soc/soc_caps.h>
 #include <SerialLog.h>
@@ -295,7 +298,17 @@ HardwareConfig      g_hardware;
 static bool g_oledReady = false;
 static bool g_oledFailureReported = false;
 static bool g_mdnsReady = false;
+static bool g_spiffsReady = false;
 static unsigned long g_restartAt = 0;
+static File g_spiffsUploadFile;
+static String g_spiffsUploadPath;
+static String g_spiffsUploadError;
+static size_t g_spiffsUploadBytes = 0;
+static bool g_spiffsUploadStarted = false;
+
+static const char* RESET_LOG_PATH = "/reset-log.txt";
+static const char* LAST_COREDUMP_PATH = "/last-coredump.bin";
+static const size_t RESET_LOG_MAX_SIZE = 64 * 1024;
 
 #if defined(RGB_BUILTIN)
 static constexpr bool RGB_LED_SUPPORTED = true;
@@ -342,6 +355,200 @@ void setRelay(bool active)
 
   if (mqttClient.connected())
     mqttClient.publish(TOPIC_RELAY_STATE, active ? "ON" : "OFF", /*retain=*/true);
+}
+
+const char* resetReasonName(esp_reset_reason_t reason)
+{
+  switch (reason)
+  {
+    case ESP_RST_POWERON:    return "Power On";
+    case ESP_RST_EXT:        return "External Pin";
+    case ESP_RST_SW:         return "Software Reset";
+    case ESP_RST_PANIC:      return "Exception/Panic";
+    case ESP_RST_INT_WDT:    return "Interrupt Watchdog";
+    case ESP_RST_TASK_WDT:   return "Task Watchdog";
+    case ESP_RST_WDT:        return "Other Watchdog";
+    case ESP_RST_DEEPSLEEP:  return "Deep Sleep";
+    case ESP_RST_BROWNOUT:   return "Brownout";
+    case ESP_RST_SDIO:       return "SDIO";
+    case ESP_RST_USB:        return "USB";
+    case ESP_RST_JTAG:       return "JTAG";
+    case ESP_RST_EFUSE:      return "eFuse Error";
+    case ESP_RST_PWR_GLITCH: return "Power Glitch";
+    case ESP_RST_CPU_LOCKUP: return "CPU Lockup";
+    default:                 return "Unknown";
+  }
+}
+
+bool copyLastCoreDump(size_t imageAddress, size_t imageSize)
+{
+  const esp_partition_t* partition =
+    esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                             ESP_PARTITION_SUBTYPE_DATA_COREDUMP, nullptr);
+  if (!partition || imageAddress < partition->address ||
+      imageAddress - partition->address + imageSize > partition->size)
+    return false;
+
+  File output = SPIFFS.open(LAST_COREDUMP_PATH, FILE_WRITE);
+  if (!output) return false;
+
+  uint8_t buffer[512];
+  size_t copied = 0;
+  const size_t partitionOffset = imageAddress - partition->address;
+  while (copied < imageSize)
+  {
+    const size_t chunk = min(sizeof(buffer), imageSize - copied);
+    if (esp_partition_read(partition, partitionOffset + copied, buffer, chunk) != ESP_OK ||
+        output.write(buffer, chunk) != chunk)
+    {
+      output.close();
+      SPIFFS.remove(LAST_COREDUMP_PATH);
+      return false;
+    }
+    copied += chunk;
+  }
+
+  output.close();
+  return true;
+}
+
+void writeCoreDumpSummary(File& logFile, bool& coreDumpCopied)
+{
+  size_t imageAddress = 0;
+  size_t imageSize = 0;
+  const esp_err_t imageResult = esp_core_dump_image_get(&imageAddress, &imageSize);
+  if (imageResult != ESP_OK)
+  {
+    logFile.println(F("Coredump: indisponibil"));
+    return;
+  }
+
+  logFile.printf("Coredump: prezent, %u bytes, flash=0x%08lx\n",
+                 static_cast<unsigned>(imageSize),
+                 static_cast<unsigned long>(imageAddress));
+  logFile.printf("Coredump integritate: %s\n",
+                 esp_err_to_name(esp_core_dump_image_check()));
+
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
+  char panicReason[256] = {};
+  if (esp_core_dump_get_panic_reason(panicReason, sizeof(panicReason)) == ESP_OK)
+    logFile.printf("Panic reason: %s\n", panicReason);
+
+  esp_core_dump_summary_t* summary =
+    static_cast<esp_core_dump_summary_t*>(malloc(sizeof(esp_core_dump_summary_t)));
+  if (summary && esp_core_dump_get_summary(summary) == ESP_OK)
+  {
+    logFile.printf("Task: %s | TCB=0x%08lx | PC=0x%08lx\n",
+                   summary->exc_task,
+                   static_cast<unsigned long>(summary->exc_tcb),
+                   static_cast<unsigned long>(summary->exc_pc));
+    logFile.printf("Coredump version: 0x%08lx | App ELF SHA256: %s\n",
+                   static_cast<unsigned long>(summary->core_dump_version),
+                   reinterpret_cast<const char*>(summary->app_elf_sha256));
+
+#if CONFIG_IDF_TARGET_ARCH_XTENSA
+    logFile.printf("EXCCAUSE=0x%08lx EXCVADDR=0x%08lx\n",
+                   static_cast<unsigned long>(summary->ex_info.exc_cause),
+                   static_cast<unsigned long>(summary->ex_info.exc_vaddr));
+    for (size_t i = 0; i < 16; ++i)
+    {
+      logFile.printf("A%u=0x%08lx%s", static_cast<unsigned>(i),
+                     static_cast<unsigned long>(summary->ex_info.exc_a[i]),
+                     (i % 4 == 3) ? "\n" : " ");
+    }
+    logFile.print(F("Backtrace PC:"));
+    for (size_t i = 0; i < summary->exc_bt_info.depth &&
+                       i < sizeof(summary->exc_bt_info.bt) / sizeof(summary->exc_bt_info.bt[0]);
+         ++i)
+      logFile.printf(" 0x%08lx",
+                     static_cast<unsigned long>(summary->exc_bt_info.bt[i]));
+    logFile.printf("\nBacktrace corupt: %s\n",
+                   summary->exc_bt_info.corrupted ? "da" : "nu");
+#elif CONFIG_IDF_TARGET_ARCH_RISCV
+    logFile.printf("MCAUSE=0x%08lx MTVAL=0x%08lx MSTATUS=0x%08lx MTVEC=0x%08lx\n",
+                   static_cast<unsigned long>(summary->ex_info.mcause),
+                   static_cast<unsigned long>(summary->ex_info.mtval),
+                   static_cast<unsigned long>(summary->ex_info.mstatus),
+                   static_cast<unsigned long>(summary->ex_info.mtvec));
+    logFile.printf("RA=0x%08lx SP=0x%08lx\n",
+                   static_cast<unsigned long>(summary->ex_info.ra),
+                   static_cast<unsigned long>(summary->ex_info.sp));
+    for (size_t i = 0; i < 8; ++i)
+    {
+      logFile.printf("A%u=0x%08lx%s", static_cast<unsigned>(i),
+                     static_cast<unsigned long>(summary->ex_info.exc_a[i]),
+                     (i % 4 == 3) ? "\n" : " ");
+    }
+    logFile.printf("Stack dump disponibil: %u bytes\n",
+                   static_cast<unsigned>(summary->exc_bt_info.dump_size));
+#endif
+  }
+  else
+  {
+    logFile.println(F("Rezumat coredump: nu a putut fi citit"));
+  }
+  free(summary);
+#endif
+
+  coreDumpCopied = copyLastCoreDump(imageAddress, imageSize);
+  logFile.printf("Coredump brut: %s%s\n",
+                 coreDumpCopied ? "salvat in " : "copiere esuata pentru ",
+                 LAST_COREDUMP_PATH);
+}
+
+void persistResetLog()
+{
+  if (!g_spiffsReady) return;
+
+  Preferences resetPrefs;
+  uint32_t bootSequence = 1;
+  if (resetPrefs.begin("reset_log", false))
+  {
+    bootSequence = resetPrefs.getUInt("sequence", 0) + 1;
+    resetPrefs.putUInt("sequence", bootSequence);
+    resetPrefs.end();
+  }
+
+  File existing = SPIFFS.open(RESET_LOG_PATH, FILE_READ);
+  const bool rotateLog = existing && existing.size() >= RESET_LOG_MAX_SIZE;
+  if (existing) existing.close();
+  if (rotateLog) SPIFFS.remove(RESET_LOG_PATH);
+
+  File logFile = SPIFFS.open(RESET_LOG_PATH, FILE_APPEND);
+  if (!logFile)
+  {
+    serialLog.println("[ResetLog] Nu pot deschide /reset-log.txt");
+    return;
+  }
+
+  const esp_reset_reason_t reason = esp_reset_reason();
+  logFile.println(F("============================================================"));
+  logFile.printf("Boot #%lu | reset=%s (%d)\n",
+                 static_cast<unsigned long>(bootSequence),
+                 resetReasonName(reason), static_cast<int>(reason));
+  logFile.printf("Chip=%s | profil=%s | SDK=%s\n",
+                 ESP.getChipModel(), buildProfileName(), ESP.getSdkVersion());
+  logFile.printf("Firmware MD5=%s | sketch=%u bytes | flash=%u bytes\n",
+                 ESP.getSketchMD5().c_str(),
+                 static_cast<unsigned>(ESP.getSketchSize()),
+                 static_cast<unsigned>(ESP.getFlashChipSize()));
+
+  bool coreDumpCopied = false;
+  writeCoreDumpSummary(logFile, coreDumpCopied);
+  logFile.println();
+  logFile.close();
+
+  if (coreDumpCopied)
+  {
+    const esp_err_t eraseResult = esp_core_dump_image_erase();
+    if (eraseResult != ESP_OK)
+      serialLog.printf("[ResetLog] Coredump copiat, dar stergerea a esuat: %s\n",
+                       esp_err_to_name(eraseResult));
+  }
+
+  serialLog.printf("[ResetLog] Boot #%lu salvat in %s (%s)\n",
+                   static_cast<unsigned long>(bootSequence), RESET_LOG_PATH,
+                   resetReasonName(reason));
 }
 
 // ============================================================
@@ -736,6 +943,257 @@ void handleRoot(WebServer& server)
   server.send_P(200, "text/html", htmlPage);
 }
 
+String jsonEscape(const String& value)
+{
+  String escaped;
+  escaped.reserve(value.length() + 8);
+  for (size_t i = 0; i < value.length(); ++i)
+  {
+    const char c = value[i];
+    switch (c)
+    {
+      case '"':  escaped += F("\\\""); break;
+      case '\\': escaped += F("\\\\"); break;
+      case '\b': escaped += F("\\b"); break;
+      case '\f': escaped += F("\\f"); break;
+      case '\n': escaped += F("\\n"); break;
+      case '\r': escaped += F("\\r"); break;
+      case '\t': escaped += F("\\t"); break;
+      default:
+        if (static_cast<uint8_t>(c) >= 0x20) escaped += c;
+        break;
+    }
+  }
+  return escaped;
+}
+
+bool isValidSpiffsPath(const String& path)
+{
+  if (path.length() < 2 || path.length() > 128 || path[0] != '/') return false;
+  if (path.indexOf(F("..")) >= 0 || path.indexOf('\\') >= 0) return false;
+
+  for (size_t i = 0; i < path.length(); ++i)
+  {
+    if (static_cast<uint8_t>(path[i]) < 0x20) return false;
+  }
+  return true;
+}
+
+String safeSpiffsUploadPath(const String& filename)
+{
+  int separator = filename.lastIndexOf('/');
+  const int backslash = filename.lastIndexOf('\\');
+  if (backslash > separator) separator = backslash;
+
+  String basename = filename.substring(separator + 1);
+  basename.trim();
+  if (basename.length() == 0 || basename == "." || basename == "..") return "";
+
+  String safeName;
+  safeName.reserve(min(static_cast<size_t>(64), basename.length()) + 1);
+  for (size_t i = 0; i < basename.length() && safeName.length() < 64; ++i)
+  {
+    const char c = basename[i];
+    safeName += isAlphaNumeric(c) || c == '.' || c == '-' || c == '_' ? c : '_';
+  }
+  if (safeName.length() == 0 || safeName == "." || safeName == "..") return "";
+  return "/" + safeName;
+}
+
+String safeDownloadFilename(const String& path)
+{
+  String filename = path.substring(path.lastIndexOf('/') + 1);
+  String safeName;
+  safeName.reserve(filename.length());
+  for (size_t i = 0; i < filename.length(); ++i)
+  {
+    const char c = filename[i];
+    safeName += isAlphaNumeric(c) || c == '.' || c == '-' || c == '_' ? c : '_';
+  }
+  return safeName.length() ? safeName : "download.bin";
+}
+
+void handleSpiffsList(WebServer& server)
+{
+  server.sendHeader("Cache-Control", "no-store");
+  if (!g_spiffsReady)
+  {
+    server.send(503, "application/json",
+                "{\"mounted\":false,\"error\":\"SPIFFS nu este disponibil\"}");
+    return;
+  }
+
+  File root = SPIFFS.open("/");
+  if (!root || !root.isDirectory())
+  {
+    server.send(500, "application/json",
+                "{\"mounted\":true,\"error\":\"directorul SPIFFS nu poate fi citit\"}");
+    return;
+  }
+
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "application/json", "");
+  server.sendContent(String(F("{\"mounted\":true,\"total\":")) +
+                     SPIFFS.totalBytes() + F(",\"used\":") +
+                     SPIFFS.usedBytes() + F(",\"files\":["));
+
+  bool first = true;
+  File file = root.openNextFile();
+  while (file)
+  {
+    if (!file.isDirectory())
+    {
+      String fileName = file.name();
+      if (!fileName.startsWith("/")) fileName = "/" + fileName;
+      String entry;
+      entry.reserve(fileName.length() + 40);
+      if (!first) entry += ',';
+      entry += F("{\"name\":\"");
+      entry += jsonEscape(fileName);
+      entry += F("\",\"size\":");
+      entry += file.size();
+      entry += '}';
+      server.sendContent(entry);
+      first = false;
+    }
+    file = root.openNextFile();
+  }
+  server.sendContent("]}");
+  server.sendContent("");
+}
+
+void handleSpiffsDownload(WebServer& server)
+{
+  if (!g_spiffsReady)
+  {
+    server.send(503, "application/json", "{\"error\":\"SPIFFS nu este disponibil\"}");
+    return;
+  }
+
+  const String path = server.arg("path");
+  if (!isValidSpiffsPath(path))
+  {
+    server.send(400, "application/json", "{\"error\":\"cale SPIFFS invalida\"}");
+    return;
+  }
+
+  File file = SPIFFS.open(path, FILE_READ);
+  if (!file || file.isDirectory())
+  {
+    server.send(404, "application/json", "{\"error\":\"fisierul nu exista\"}");
+    return;
+  }
+
+  server.sendHeader("Cache-Control", "no-store");
+  server.sendHeader("Content-Disposition",
+                    "attachment; filename=\"" + safeDownloadFilename(path) + "\"");
+  server.streamFile(file, "application/octet-stream");
+  file.close();
+}
+
+void handleSpiffsUploadData()
+{
+  WebServer& server = wifiManager.getServer();
+  HTTPUpload& upload = server.upload();
+
+  if (upload.status == UPLOAD_FILE_START)
+  {
+    if (g_spiffsUploadFile) g_spiffsUploadFile.close();
+    g_spiffsUploadPath = "";
+    g_spiffsUploadError = "";
+    g_spiffsUploadBytes = 0;
+    g_spiffsUploadStarted = true;
+
+    if (!g_spiffsReady)
+    {
+      g_spiffsUploadError = F("SPIFFS nu este disponibil");
+      return;
+    }
+
+    g_spiffsUploadPath = safeSpiffsUploadPath(upload.filename);
+    if (g_spiffsUploadPath.length() == 0)
+    {
+      g_spiffsUploadError = F("nume de fisier invalid");
+      return;
+    }
+
+    g_spiffsUploadFile = SPIFFS.open(g_spiffsUploadPath, FILE_WRITE);
+    if (!g_spiffsUploadFile)
+    {
+      g_spiffsUploadError = F("fisierul nu poate fi creat");
+      return;
+    }
+    serialLog.println("[SPIFFS] Upload inceput: " + g_spiffsUploadPath);
+  }
+  else if (upload.status == UPLOAD_FILE_WRITE)
+  {
+    if (g_spiffsUploadError.length() == 0 && g_spiffsUploadFile)
+    {
+      const size_t written = g_spiffsUploadFile.write(upload.buf, upload.currentSize);
+      g_spiffsUploadBytes += written;
+      if (written != upload.currentSize)
+      {
+        g_spiffsUploadError = F("spatiu insuficient sau eroare la scriere");
+        g_spiffsUploadFile.close();
+        SPIFFS.remove(g_spiffsUploadPath);
+      }
+    }
+  }
+  else if (upload.status == UPLOAD_FILE_END)
+  {
+    if (g_spiffsUploadFile) g_spiffsUploadFile.close();
+    if (g_spiffsUploadError.length() == 0)
+      serialLog.printf("[SPIFFS] Upload finalizat: %s (%u bytes)\n",
+                       g_spiffsUploadPath.c_str(),
+                       static_cast<unsigned>(g_spiffsUploadBytes));
+    else if (g_spiffsUploadPath.length())
+      SPIFFS.remove(g_spiffsUploadPath);
+  }
+  else if (upload.status == UPLOAD_FILE_ABORTED)
+  {
+    if (g_spiffsUploadFile) g_spiffsUploadFile.close();
+    if (g_spiffsUploadPath.length()) SPIFFS.remove(g_spiffsUploadPath);
+    g_spiffsUploadError = F("upload intrerupt");
+  }
+}
+
+void handleSpiffsUploadComplete()
+{
+  WebServer& server = wifiManager.getServer();
+  server.sendHeader("Cache-Control", "no-store");
+
+  if (!g_spiffsUploadStarted)
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"nu a fost primit niciun fisier\"}");
+    return;
+  }
+  g_spiffsUploadStarted = false;
+
+  if (g_spiffsUploadError.length())
+  {
+    String response = F("{\"ok\":false,\"error\":\"");
+    response += jsonEscape(g_spiffsUploadError);
+    response += F("\"}");
+    server.send(g_spiffsReady ? 500 : 503, "application/json", response);
+    return;
+  }
+
+  if (g_spiffsUploadPath.length() == 0)
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"nu a fost primit niciun fisier\"}");
+    return;
+  }
+
+  String response = F("{\"ok\":true,\"name\":\"");
+  response += jsonEscape(g_spiffsUploadPath);
+  response += F("\",\"size\":");
+  response += g_spiffsUploadBytes;
+  response += '}';
+  server.send(201, "application/json", response);
+}
+
 void handleUiConfigGet(WebServer& server)
 {
   server.sendHeader("Cache-Control", "no-store");
@@ -1103,18 +1561,7 @@ void handleBoardInfo(WebServer& server)
   // Use WiFi MAC (already available, no extra header needed)
   String macStr = WiFi.macAddress();
 
-  String resetReason;
-  switch (esp_reset_reason()) {
-    case ESP_RST_POWERON:  resetReason = "Power On";          break;
-    case ESP_RST_EXT:      resetReason = "External Pin";      break;
-    case ESP_RST_SW:       resetReason = "Software Reset";    break;
-    case ESP_RST_PANIC:    resetReason = "Exception/Panic";   break;
-    case ESP_RST_INT_WDT:  resetReason = "Interrupt Watchdog"; break;
-    case ESP_RST_TASK_WDT: resetReason = "Task Watchdog";     break;
-    case ESP_RST_DEEPSLEEP: resetReason = "Deep Sleep";       break;
-    case ESP_RST_BROWNOUT: resetReason = "Brownout";          break;
-    default:               resetReason = "Other";             break;
-  }
+  const char* resetReason = resetReasonName(esp_reset_reason());
 
   String json = "{";
   json += "\"chip_model\":\"" + String(ESP.getChipModel()) + "\",";
@@ -1149,7 +1596,7 @@ void handleBoardInfo(WebServer& server)
   json += "\"sdk_version\":\"" + String(ESP.getSdkVersion()) + "\",";
   json += "\"mac_address\":\"" + macStr + "\",";
   json += "\"uptime_ms\":" + String(millis()) + ",";
-  json += "\"reset_reason\":\"" + resetReason + "\",";
+  json += "\"reset_reason\":\"" + String(resetReason) + "\",";
   json += "\"sketch_size\":" + String(ESP.getSketchSize()) + ",";
   json += "\"free_sketch_space\":" + String(ESP.getFreeSketchSpace()) + ",";
   json += "\"sketch_md5\":\"" + String(ESP.getSketchMD5()) + "\"";
@@ -1365,6 +1812,19 @@ void setup()
     serialLog.println("[OLED] Dezactivat");
   }
 
+  g_spiffsReady = SPIFFS.begin(true);
+  if (g_spiffsReady)
+  {
+    serialLog.printf("[SPIFFS] Montat: %u / %u bytes folositi\n",
+                     static_cast<unsigned>(SPIFFS.usedBytes()),
+                     static_cast<unsigned>(SPIFFS.totalBytes()));
+    persistResetLog();
+  }
+  else
+  {
+    serialLog.println("[SPIFFS] Montarea sau formatarea partitiei a esuat");
+  }
+
   // WiFiWebManager
   wifiManager.begin();
 
@@ -1399,6 +1859,10 @@ void setup()
   wifiManager.on("/api/hardware_config", HTTP_GET,  handleHardwareConfigGet);
   wifiManager.on("/api/hardware_config", HTTP_POST, handleHardwareConfigPost);
   wifiManager.on("/api/hardware_reset",  HTTP_POST, handleHardwareConfigReset);
+  wifiManager.on("/api/files",           HTTP_GET,  handleSpiffsList);
+  wifiManager.on("/api/files/download",  HTTP_GET,  handleSpiffsDownload);
+  wifiManager.getServer().on("/api/files/upload", HTTP_POST,
+                             handleSpiffsUploadComplete, handleSpiffsUploadData);
 
   // Incarca si aplica configuratia MQTT din NVS
   loadMqttConfig();

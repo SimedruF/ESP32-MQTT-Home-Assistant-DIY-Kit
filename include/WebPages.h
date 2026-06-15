@@ -102,6 +102,20 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .serial-check{display:flex;align-items:center;gap:7px;color:#475569;font-size:.9em;font-weight:600}
 .serial-status{margin-left:auto;color:#64748b;font-size:.85em}
 .serial-terminal{height:430px;overflow:auto;background:#07111f;color:#d1fae5;border:1px solid #334155;border-radius:10px;padding:14px;font:13px/1.5 Consolas,'Courier New',monospace;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2}
+/* SPIFFS files */
+.fs-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.fs-stat{padding:13px;border-radius:9px;background:#eff6ff;color:#1e3a8a;text-align:center}
+.fs-stat strong{display:block;font-size:1.15em;margin-top:3px}
+.fs-upload{padding:16px;border:2px dashed #93c5fd;border-radius:10px;background:#f8fafc;margin-bottom:18px}
+.fs-upload-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.fs-upload-row input[type=file]{flex:1;min-width:220px}
+.fs-table{width:100%;border-collapse:collapse}
+.fs-table th,.fs-table td{padding:10px;border-bottom:1px solid #e2e8f0;text-align:left}
+.fs-table th{color:#475569;font-size:.82em;text-transform:uppercase}
+.fs-table td:nth-child(2),.fs-table th:nth-child(2){text-align:right;white-space:nowrap}
+.fs-table td:nth-child(3),.fs-table th:nth-child(3){text-align:center;white-space:nowrap}
+.fs-download{display:inline-block;padding:6px 12px;border-radius:6px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;font-size:.85em}
+.fs-empty{text-align:center;padding:24px;color:#64748b}
 /* Hardware */
 .hw-summary{background:#eef2ff;color:#3730a3;padding:12px 16px;border-radius:8px;margin-bottom:18px;font-weight:600}
 .hw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
@@ -139,6 +153,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
   .language-control{justify-content:center;margin-top:-10px}
   .pinout-board{grid-template-columns:145px 135px 145px;gap:5px}.board-body{min-height:450px}
   .serial-status{width:100%;margin-left:0}.serial-terminal{height:360px}
+  .fs-summary{grid-template-columns:1fr}.fs-table th:first-child,.fs-table td:first-child{word-break:break-all}
 }
 </style>
 </head>
@@ -161,6 +176,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
     <button class="tab-btn" id="communicationTabButton" style="display:none"
             onclick="showTab('communication',this)">&#128225; Comunicare IoT</button>
     <button class="tab-btn" onclick="showTab('hardware',this)">&#128295; Hardware</button>
+    <button class="tab-btn" onclick="showTab('files',this)">&#128193; Fisiere</button>
     <button class="tab-btn" onclick="showTab('serial',this)">&#9000; Serial Log</button>
     <button class="tab-btn" onclick="showTab('board',this)">&#128203; Info Placa</button>
   </div>
@@ -446,6 +462,38 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
     <div class="gpio-grid" id="gpioGrid"></div>
   </div>
 
+  <!-- SPIFFS FILES TAB -->
+  <div id="files-tab" class="tab">
+    <div class="fs-summary">
+      <div class="fs-stat">Capacitate<strong id="fsTotal">-</strong></div>
+      <div class="fs-stat">Utilizat<strong id="fsUsed">-</strong></div>
+      <div class="fs-stat">Liber<strong id="fsFree">-</strong></div>
+    </div>
+
+    <div class="fs-upload">
+      <div class="fs-upload-row">
+        <input type="file" id="fsUploadFile">
+        <button class="btn btn-primary" style="flex:0 0 auto" onclick="uploadSpiffsFile()">
+          Incarca fisier
+        </button>
+        <button class="btn" style="background:#64748b;color:#fff;flex:0 0 auto" onclick="loadSpiffsFiles()">
+          Actualizeaza
+        </button>
+      </div>
+      <div class="msg-box" id="fsMsg"></div>
+      <p style="margin-top:10px;color:#64748b;font-size:.82em">
+        Fisierul este salvat in SPIFFS. Un fisier existent cu acelasi nume va fi suprascris.
+      </p>
+    </div>
+
+    <div style="overflow-x:auto">
+      <table class="fs-table">
+        <thead><tr><th>Nume fisier</th><th>Dimensiune</th><th>Actiune</th></tr></thead>
+        <tbody id="fsFileList"><tr><td colspan="3" class="fs-empty">Se citeste continutul SPIFFS...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- SERIAL LOG TAB -->
   <div id="serial-tab" class="tab">
     <div class="serial-toolbar">
@@ -548,6 +596,17 @@ var englishText = {
   'Română':'Romanian',
   'MQTT • Home Assistant • DHT11 • PIR • Releu • OLED':'MQTT • Home Assistant • DHT11 • PIR • Relay • OLED',
   'Info Placa':'Board Info',
+  'Fisiere':'Files',
+  'Capacitate':'Capacity',
+  'Utilizat':'Used',
+  'Liber':'Free',
+  'Incarca fisier':'Upload file',
+  'Actualizeaza':'Refresh',
+  'Fisierul este salvat in SPIFFS. Un fisier existent cu acelasi nume va fi suprascris.':'The file is stored in SPIFFS. An existing file with the same name will be overwritten.',
+  'Nume fisier':'File name',
+  'Dimensiune':'Size',
+  'Actiune':'Action',
+  'Se citeste continutul SPIFFS...':'Reading SPIFFS contents...',
   'Comunicare IoT':'IoT Communication',
   'Se citeste configuratia radio...':'Reading radio configuration...',
   'Protocol de comunicare IoT':'IoT communication protocol',
@@ -722,6 +781,7 @@ function showTab(name, btn) {
   if (name === 'mqtt')  loadMqttCfg();
   if (name === 'communication') loadCommunicationConfig();
   if (name === 'hardware') loadHardwareCfg();
+  if (name === 'files') loadSpiffsFiles();
   serialTabActive = name === 'serial';
   if (serialTabActive) loadSerialLog();
 }
@@ -1103,6 +1163,101 @@ function downloadSerialLog() {
 }
 
 setInterval(loadSerialLog, 1000);
+
+// ---- SPIFFS Files ----
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(2) + ' MB';
+}
+
+function showSpiffsMessage(message, ok) {
+  var box = document.getElementById('fsMsg');
+  box.style.display = 'block';
+  box.style.background = ok ? '#d1fae5' : '#fee2e2';
+  box.style.color = ok ? '#065f46' : '#991b1b';
+  box.textContent = message;
+}
+
+function loadSpiffsFiles() {
+  var list = document.getElementById('fsFileList');
+  list.innerHTML = '<tr><td colspan="3" class="fs-empty">' +
+    tr('Se citeste continutul SPIFFS...', 'Reading SPIFFS contents...') + '</td></tr>';
+
+  fetch('/api/files', {cache:'no-store'})
+    .then(function(r) {
+      return r.json().then(function(data) {
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        return data;
+      });
+    })
+    .then(function(data) {
+      document.getElementById('fsTotal').textContent = formatFileSize(data.total);
+      document.getElementById('fsUsed').textContent = formatFileSize(data.used);
+      document.getElementById('fsFree').textContent = formatFileSize(data.total - data.used);
+      list.textContent = '';
+
+      if (!data.files.length) {
+        var emptyRow = list.insertRow();
+        var emptyCell = emptyRow.insertCell();
+        emptyCell.colSpan = 3;
+        emptyCell.className = 'fs-empty';
+        emptyCell.textContent = tr('Nu exista fisiere in SPIFFS.', 'There are no files in SPIFFS.');
+        return;
+      }
+
+      data.files.sort(function(a, b) { return a.name.localeCompare(b.name); });
+      data.files.forEach(function(file) {
+        var row = list.insertRow();
+        row.insertCell().textContent = file.name;
+        row.insertCell().textContent = formatFileSize(file.size);
+        var actionCell = row.insertCell();
+        var link = document.createElement('a');
+        link.className = 'fs-download';
+        link.href = '/api/files/download?path=' + encodeURIComponent(file.name);
+        link.textContent = tr('Descarca', 'Download');
+        actionCell.appendChild(link);
+      });
+    })
+    .catch(function(error) {
+      list.innerHTML = '';
+      var row = list.insertRow();
+      var cell = row.insertCell();
+      cell.colSpan = 3;
+      cell.className = 'fs-empty';
+      cell.textContent = tr('Eroare SPIFFS: ', 'SPIFFS error: ') + error.message;
+    });
+}
+
+function uploadSpiffsFile() {
+  var input = document.getElementById('fsUploadFile');
+  if (!input.files.length) {
+    showSpiffsMessage(tr('Selecteaza mai intai un fisier.', 'Select a file first.'), false);
+    return;
+  }
+
+  var data = new FormData();
+  data.append('file', input.files[0]);
+  showSpiffsMessage(tr('Fisierul se incarca...', 'Uploading file...'), true);
+
+  fetch('/api/files/upload', {method:'POST', body:data})
+    .then(function(r) {
+      return r.json().then(function(response) {
+        if (!r.ok) throw new Error(response.error || ('HTTP ' + r.status));
+        return response;
+      });
+    })
+    .then(function(response) {
+      showSpiffsMessage(
+        tr('Fisier incarcat: ', 'File uploaded: ') + response.name +
+        ' (' + formatFileSize(response.size) + ')', true);
+      input.value = '';
+      loadSpiffsFiles();
+    })
+    .catch(function(error) {
+      showSpiffsMessage(tr('Upload esuat: ', 'Upload failed: ') + error.message, false);
+    });
+}
 
 // ---- MQTT Config ----
 function loadMqttCfg() {
