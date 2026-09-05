@@ -56,6 +56,9 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .rgb-controls{display:grid;grid-template-columns:54px 1fr;gap:8px;align-items:center;margin-top:10px;text-align:left;font-size:.8em}
 .rgb-controls input[type=color]{width:54px;height:36px;padding:2px;border:2px solid rgba(255,255,255,.6);border-radius:6px;background:transparent;cursor:pointer}
 .rgb-controls input[type=range]{width:100%}
+.rgb-blink{margin-top:12px;text-align:left;font-size:.85em}
+.rgb-blink input[type=number]{width:100%;margin-top:5px;padding:7px;border-radius:6px;border:1px solid #cbd5e1}
+.rgb-blink label{display:block;margin-top:8px}
 .rgb-meta{font-size:.78em;opacity:.85;margin-top:7px}
 /* Info box */
 .info-box{background:#f0f9ff;border-left:4px solid #3b82f6;padding:14px 18px;border-radius:8px;font-size:.88em;color:#1e3a5f;line-height:1.8}
@@ -233,7 +236,47 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
           <button onclick="setRgbLed(1)">ON</button>
           <button onclick="setRgbLed(0)">OFF</button>
         </div>
+        <div class="rgb-blink">
+          <label><input type="checkbox" id="rgbBlink"> <span>Test blink</span></label>
+          <label for="rgbBlinkInterval">Interval aprindere / stingere (ms)</label>
+          <input type="number" id="rgbBlinkInterval" min="100" max="60000" step="1" value="500" required aria-describedby="rgbBlinkHelp">
+          <div class="rgb-meta" id="rgbBlinkHelp">100–60000 ms. La 500 ms: aprins 0,5 s, stins 0,5 s. Testul se opreste la repornirea placii.</div>
+          <div class="rgb-meta" id="rgbError" role="status" aria-live="polite"></div>
+        </div>
       </div>
+    </div>
+
+    <div class="info-box" id="blePanel" style="display:none;margin-bottom:18px">
+      <h3>Bluetooth LE — Control LED</h3>
+      <p id="bleStatus" role="status" aria-live="polite"></p>
+      <form id="bleForm" onsubmit="saveBleConfig(event)">
+        <label><input type="checkbox" id="bleEnabled"> <span>Activeaza BLE</span></label>
+        <div class="form-group" style="margin-top:10px">
+          <label class="form-label" for="bleName">Nume vizibil pe telefon</label>
+          <input class="form-input" id="bleName" value="ESP32-HA-Kit" maxlength="20"
+                 pattern="[A-Za-z0-9_-]{1,20}" required aria-describedby="bleNameHelp">
+          <small id="bleNameHelp">1–20 caractere: litere, cifre, cratima sau underscore.</small>
+        </div>
+        <button class="btn btn-primary" id="bleSave" type="submit">Salveaza BLE si reporneste</button>
+      </form>
+      <p id="bleMessage" role="status" aria-live="polite"></p>
+      <p>Control local de test, fara PIN. Cand BLE este activ, un telefon din apropiere poate controla LED-ul.</p>
+      <details>
+        <summary>Conectare si comenzi de pe telefon</summary>
+        <ol style="margin-left:20px">
+          <li>Activeaza BLE si salveaza. Dupa repornire, deschide nRF Connect pe telefon si cauta numele placii.</li>
+          <li>Conecteaza-te in aplicatie, deschide serviciul UART si scrie o comanda ca Text / UTF-8 in RX (Write).</li>
+          <li>Activeaza notificarile TX pentru OK sau ERR. Citeste State pentru starea LED-ului in JSON.</li>
+        </ol>
+        <p><code>ON</code> / <code>OFF</code> &bull; <code>COLOR #FF0000</code> &bull;
+           <code>BRIGHT 25</code> &bull; <code>BLINK 500</code> &bull;
+           <code>BLINK OFF</code> &bull; <code>STATUS</code></p>
+        <p>O comanda per scriere. ON/OFF opreste blink-ul; culoarea si luminozitatea nu aprind singure LED-ul.</p>
+        <p>Service: <code id="bleService" style="overflow-wrap:anywhere"></code><br>
+           RX / Write: <code id="bleRx" style="overflow-wrap:anywhere"></code><br>
+           TX / Read + Notify: <code id="bleTx" style="overflow-wrap:anywhere"></code><br>
+           State / Read: <code id="bleStateUuid" style="overflow-wrap:anywhere"></code></p>
+      </details>
     </div>
 
     <div class="info-box" id="hardwareInfo">
@@ -643,6 +686,18 @@ var currentLanguage = 'ro';
 var originalTextNodes = [];
 
 var englishText = {
+  "Bluetooth LE — Control LED":"Bluetooth LE \u2014 LED control",
+  "Activeaza BLE":"Enable BLE",
+  "Nume vizibil pe telefon":"Name shown on the phone",
+  "1–20 caractere: litere, cifre, cratima sau underscore.":"1\u201320 characters: letters, digits, hyphen or underscore.",
+  "Salveaza BLE si reporneste":"Save BLE and restart",
+  "Control local de test, fara PIN. Cand BLE este activ, un telefon din apropiere poate controla LED-ul.":"Local test control, without a PIN. When BLE is enabled, a nearby phone can control the LED.",
+  "Conectare si comenzi de pe telefon":"Phone connection and commands",
+  "Activeaza BLE si salveaza. Dupa repornire, deschide nRF Connect pe telefon si cauta numele placii.":"Enable BLE and save. After restart, open nRF Connect on your phone and scan for the board name.",
+  "Conecteaza-te in aplicatie, deschide serviciul UART si scrie o comanda ca Text / UTF-8 in RX (Write).":"Connect in the app, open the UART service and write a Text / UTF-8 command to RX (Write).",
+  "Activeaza notificarile TX pentru OK sau ERR. Citeste State pentru starea LED-ului in JSON.":"Enable TX notifications for OK or ERR. Read State for the LED state in JSON.",
+  "O comanda per scriere. ON/OFF opreste blink-ul; culoarea si luminozitatea nu aprind singure LED-ul.":"One command per write. ON/OFF stops blinking; color and brightness do not turn on the LED by themselves.",
+
   'Limba interfeței':'Interface language',
   'Română':'Romanian',
   'MQTT • Home Assistant • DHT11 • PIR • Releu • OLED':'MQTT • Home Assistant • DHT11 • PIR • Relay • OLED',
@@ -684,6 +739,9 @@ var englishText = {
   'Releu SSR':'SSR Relay',
   'Releu SSR IN':'SSR relay IN',
   'configurabil':'configurable',
+  'Test blink':'Blink test',
+  'Interval aprindere / stingere (ms)':'On / off interval (ms)',
+  '100–60000 ms. La 500 ms: aprins 0,5 s, stins 0,5 s. Testul se opreste la repornirea placii.':'100–60000 ms. At 500 ms: on for 0.5 s, off for 0.5 s. The test stops when the board restarts.',
   'Culoare LED':'LED color',
   'Luminozitate LED':'LED brightness',
   'Cablaj hardware:':'Hardware wiring:',
@@ -904,6 +962,7 @@ function setRelay(s) {
     .catch(function(){});
 }
 
+var rgbRevision = 0;
 var rgbLedOn = false;
 var rgbUpdateTimer = null;
 
@@ -929,7 +988,9 @@ function renderRgbLed(d) {
   document.getElementById('rgbBrightnessValue').textContent = d.brightness + '%';
   document.getElementById('rgbHex').textContent = hex;
   document.getElementById('rgbPin').textContent = d.pin >= 0 ? 'GPIO' + d.pin : 'onboard';
-  document.getElementById('rgbState').textContent = d.on ? 'ON' : 'OFF';
+  document.getElementById('rgbBlink').checked = !!d.blink;
+  document.getElementById('rgbBlinkInterval').value = d.interval_ms || 500;
+  document.getElementById('rgbState').textContent = d.blink ? 'BLINK' : (d.on ? 'ON' : 'OFF');
   var intensity = d.on ? Number(d.brightness) / 100 : 0;
   document.getElementById('rgbPreview').style.background = d.on ? hex : '#000000';
   document.getElementById('rgbPreview').style.boxShadow =
@@ -943,13 +1004,16 @@ function loadRgbLed() {
     .catch(function(){});
 }
 
-function sendRgbLed(state) {
-  var color = rgbHexToValues(document.getElementById('rgbColor').value);
-  var brightness = document.getElementById('rgbBrightness').value;
-  var body = 'red=' + color.red + '&green=' + color.green + '&blue=' + color.blue
-    + '&brightness=' + encodeURIComponent(brightness);
-  if (state !== undefined) body += '&state=' + state;
+var rgbRequestBusy = false;
+var rgbPendingRequests = [];
 
+function submitRgbLed(body) {
+  ++rgbRevision;
+  if (rgbRequestBusy) {
+    rgbPendingRequests.push(body);
+    return;
+  }
+  rgbRequestBusy = true;
   fetch('/api/rgb_led', {
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -957,12 +1021,39 @@ function sendRgbLed(state) {
   })
     .then(function(r) { return r.json().then(function(d) { return {ok:r.ok, data:d}; }); })
     .then(function(result) {
-      if (result.ok && result.data.led) renderRgbLed(result.data.led);
+      if (!result.ok || !result.data.led) throw new Error(result.data.error || 'HTTP error');
+      if (rgbPendingRequests.length === 0) renderRgbLed(result.data.led);
+      document.getElementById('rgbError').textContent = '';
     })
-    .catch(function(){});
+    .catch(function() {
+      document.getElementById('rgbError').textContent =
+        tr('Comanda LED a esuat. Verifica conexiunea si incearca din nou.',
+           'LED command failed. Check the connection and try again.');
+    })
+    .finally(function() {
+      rgbRequestBusy = false;
+      if (rgbPendingRequests.length > 0) submitRgbLed(rgbPendingRequests.shift());
+    });
+}
+
+function sendRgbLed(state) {
+  var color = rgbHexToValues(document.getElementById('rgbColor').value);
+  var brightness = document.getElementById('rgbBrightness').value;
+  var interval = document.getElementById('rgbBlinkInterval');
+  // OFF must remain usable even while the interval field contains invalid text.
+  if (state === undefined && document.getElementById('rgbBlink').checked &&
+      !interval.reportValidity()) return;
+  var body = 'red=' + color.red + '&green=' + color.green + '&blue=' + color.blue
+    + '&brightness=' + encodeURIComponent(brightness)
+    + '&blink=' + (document.getElementById('rgbBlink').checked ? '1' : '0');
+  if (interval.checkValidity()) body += '&interval_ms=' + encodeURIComponent(interval.value);
+  if (state !== undefined) body += '&state=' + state;
+  submitRgbLed(body);
 }
 
 function setRgbLed(state) {
+  clearTimeout(rgbUpdateTimer);
+  document.getElementById('rgbBlink').checked = false;
   rgbLedOn = !!state;
   sendRgbLed(state ? 1 : 0);
 }
@@ -974,12 +1065,85 @@ function scheduleRgbUpdate() {
   document.getElementById('rgbBrightnessValue').textContent = brightness + '%';
   document.getElementById('rgbPreview').style.background = rgbLedOn ? color : '#000000';
   clearTimeout(rgbUpdateTimer);
-  rgbUpdateTimer = setTimeout(function() { sendRgbLed(); }, 120);
+  rgbUpdateTimer = setTimeout(function() { rgbUpdateTimer = null; sendRgbLed(); }, 120);
 }
 
+document.getElementById('rgbBlink').addEventListener('change', function() {
+  clearTimeout(rgbUpdateTimer);
+  sendRgbLed();
+});
+document.getElementById('rgbBlinkInterval').addEventListener('change', function() {
+  clearTimeout(rgbUpdateTimer);
+  sendRgbLed();
+});
 document.getElementById('rgbColor').addEventListener('input', scheduleRgbUpdate);
 document.getElementById('rgbBrightness').addEventListener('input', scheduleRgbUpdate);
 loadRgbLed();
+
+// ---- BLE LED configuration and live state ----
+var bleConfigLoaded = false;
+var bleSaving = false;
+var blePollBusy = false;
+function loadBleConfig() {
+  if (bleSaving || blePollBusy) return;
+  blePollBusy = true;
+  var revision = rgbRevision;
+  fetch('/api/ble_config', {cache:'no-store'})
+    .then(function(r) { if (!r.ok) throw new Error('HTTP'); return r.json(); })
+    .then(function(d) {
+      document.getElementById('blePanel').style.display = d.supported ? 'block' : 'none';
+      if (!d.supported) return;
+      if (!bleConfigLoaded) {
+        document.getElementById('bleEnabled').checked = d.enabled;
+        document.getElementById('bleName').value = d.name;
+        bleConfigLoaded = true;
+      }
+      document.getElementById('bleStatus').textContent = !d.enabled
+        ? tr('BLE dezactivat', 'BLE disabled')
+        : !d.active ? tr('Initializarea BLE a esuat', 'BLE initialization failed')
+        : d.connected ? tr('Telefon conectat', 'Phone connected')
+        : tr('Disponibil pentru conectare: ', 'Ready to connect: ') + d.name;
+      document.getElementById('bleService').textContent = d.service_uuid;
+      document.getElementById('bleRx').textContent = d.rx_uuid;
+      document.getElementById('bleTx').textContent = d.tx_uuid;
+      document.getElementById('bleStateUuid').textContent = d.state_uuid;
+      if (revision === rgbRevision && !rgbRequestBusy &&
+          !document.getElementById('rgbCard').contains(document.activeElement))
+        renderRgbLed(d.led);
+    })
+    .catch(function() {
+      document.getElementById('bleStatus').textContent = tr('Conexiune indisponibila', 'Connection unavailable');
+    })
+    .finally(function() { blePollBusy = false; });
+}
+function saveBleConfig(event) {
+  event.preventDefault();
+  if (bleSaving || !document.getElementById('bleForm').reportValidity()) return;
+  bleSaving = true;
+  document.getElementById('bleSave').disabled = true;
+  var body = 'enabled=' + (document.getElementById('bleEnabled').checked ? '1' : '0')
+    + '&name=' + encodeURIComponent(document.getElementById('bleName').value);
+  fetch('/api/ble_config', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body
+  })
+    .then(function(r) { if (!r.ok) throw new Error('HTTP'); return r.json(); })
+    .then(function(d) {
+      if (!d.ok) throw new Error('save');
+      document.getElementById('bleMessage').textContent =
+        tr('Configuratie salvata. Placa reporneste; pagina se reincarca in 10 secunde.',
+           'Configuration saved. The board is restarting; the page will reload in 10 seconds.');
+      setTimeout(function() { location.reload(); }, 10000);
+    })
+    .catch(function() {
+      bleSaving = false;
+      document.getElementById('bleSave').disabled = false;
+      document.getElementById('bleMessage').textContent =
+        tr('Salvarea BLE nu a fost confirmata. Verifica conexiunea si reincarca pagina.',
+           'BLE save was not confirmed. Check the connection and reload the page.');
+    });
+}
+loadBleConfig();
+setInterval(loadBleConfig, 3000);
 
 // ---- IoT Communication ----
 function communicationLabel(protocol) {

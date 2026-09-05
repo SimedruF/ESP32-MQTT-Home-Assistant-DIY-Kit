@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Client Configuration Guide - ESP32 HA Kit / ESPHome / ESP32-C6 Super Mini</title>
+<title>Client Configuration Guide - ESP32 HA Kit / ESP32-C6-N16 / ESPHome</title>
 <style>
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
@@ -63,6 +63,7 @@
     .page{max-width:none;padding:0}
     .toc,.language{display:none}
     .section,.intro{box-shadow:none;border:1px solid #dbeafe;break-inside:avoid}
+    .box,table,tr{break-inside:avoid}
   }
 </style>
 </head>
@@ -70,7 +71,7 @@
 
 <header class="header">
   <h1>ESP32 MQTT Home Assistant DIY Kit</h1>
-  <p>Installation and configuration guide for MQTT and ESPHome firmware, including ESP32-C6 Super Mini</p>
+  <p>Installation and configuration guide for MQTT, ESP32-C6-N16 and ESPHome firmware</p>
   <div class="language">
     <a href="Ghid_Configurare_Client.html">Română</a>
     <a class="active" href="Client_Configuration_Guide.html">English</a>
@@ -80,15 +81,17 @@
 <main class="page">
   <section class="intro">
     <h2>About this guide</h2>
-    <p>The kit can run either the PlatformIO firmware with MQTT and its own web dashboard, or the alternative ESPHome firmware with direct Native API integration. The ESPHome section provides the complete ESP32-C6 Super Mini procedure.</p>
+    <p>The kit can run either the PlatformIO firmware with MQTT and its own web dashboard, or the alternative ESPHome firmware with direct Native API integration. This edition includes the ESP32-C6-N16 PlatformIO profiles, native USB and USB-to-UART serial options, onboard RGB LED testing and Bluetooth LE control from a phone.</p>
     <div>
       <span class="badge">ESP32-WROOM-32</span>
       <span class="badge">ESP32-C3</span>
       <span class="badge">ESP32-C6</span>
+      <span class="badge">ESP32-C6-N16</span>
       <span class="badge">ESP32-C6 Super Mini</span>
       <span class="badge">ESP32-S3</span>
       <span class="badge green">2.4 GHz Wi-Fi</span>
       <span class="badge green">MQTT Discovery</span>
+      <span class="badge green">Bluetooth LE LED control</span>
       <span class="badge green">ESPHome Native API</span>
       <span class="badge amber">Browser configuration</span>
     </div>
@@ -99,6 +102,7 @@
     <div class="toc-links">
       <a href="#boards">Supported boards</a>
       <a href="#requirements">Requirements</a>
+      <a href="#c6-n16">ESP32-C6-N16</a>
       <a href="#esphome-c6">ESPHome C6 Super Mini</a>
       <a href="#startup">First startup</a>
       <a href="#wifi">Wi-Fi and IP</a>
@@ -131,6 +135,11 @@
           <p><strong>Onboard RGB LED:</strong> GPIO8.</p>
         </article>
         <article class="board">
+          <h3>ESP32-C6-N16</h3>
+          <p>ESP32-C6 variant with 16 MB of external flash. The MQTT firmware uses the DevKitC-1 board definition with an explicit 16 MB flash size and the <code>default_16MB.csv</code> partition table.</p>
+          <p><strong>Profiles:</strong> <code>esp32-c6-n16</code> for native USB, or <code>esp32-c6-n16-uart</code> for an onboard USB-to-UART bridge.</p>
+        </article>
+        <article class="board">
           <h3>ESP32-C6 Super Mini</h3>
           <p>Compact ESP32-C6 board with USB-C and an integrated USB Serial/JTAG interface. It is supported by the MQTT, Zigbee Router and ESPHome profiles.</p>
           <p><strong>USB:</strong> GPIO12/GPIO13 are reserved. <strong>BOOT:</strong> GPIO9. <strong>RGB:</strong> GPIO8.</p>
@@ -144,6 +153,59 @@
       <div class="box warn">
         <strong>Available hardware capabilities not enabled by this firmware</strong>
         ESP32-C6 can run Zigbee/Thread, while C6 and S3 can be used for Matter. The MQTT firmware, Zigbee Router firmware and ESPHome firmware are separate images and cannot run simultaneously on the same board.
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="c6-n16">
+    <div class="section-head"><div class="num">C6</div><h2>ESP32-C6-N16 PlatformIO setup</h2></div>
+    <div class="section-body">
+      <p>Use this procedure for an ESP32-C6 module marked <strong>N16</strong>, which indicates 16 MB of flash. Select the profile according to the USB interface used by the development board.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>PlatformIO environment</th><th>Use it when</th><th>Serial output</th></tr>
+          <tr><td><code>esp32-c6-n16</code></td><td>The cable is connected to the ESP32-C6 native USB / USB Serial-JTAG port.</td><td>USB CDC at 115200 baud</td></tr>
+          <tr><td><code>esp32-c6-n16-uart</code></td><td>The board exposes a CH340, CH343, CP210x or similar USB-to-UART bridge.</td><td>UART0 at 115200 baud</td></tr>
+        </table>
+      </div>
+      <div class="box info">
+        <strong>Profile configuration</strong>
+        Both environments use <code>esp32-c6-devkitc-1</code>, <code>board_upload.flash_size = 16MB</code>, <code>board_build.partitions = default_16MB.csv</code> and the stable pioarduino ESP32 platform. The partition layout provides two application slots for OTA updates, SPIFFS storage and a core-dump partition.
+      </div>
+      <h3>Compile, upload and open Serial Monitor</h3>
+      <ol class="steps">
+        <li>Connect the board with a USB data cable and close any Serial Monitor that already has the port open.</li>
+        <li>For a USB-to-UART board, run <code>pio run -e esp32-c6-n16-uart -t upload</code>. For native USB, replace the environment with <code>esp32-c6-n16</code>.</li>
+        <li>Open the monitor with <code>pio device monitor -b 115200</code>. If several ports exist, add <code>-p /dev/ttyACM0</code>, <code>-p /dev/ttyUSB0</code> or the applicable Windows COM port.</li>
+        <li>After Wi-Fi connects, look for <code>IP Address:</code> or <code>[Web] http://...</code>. The periodic status also prints the current dashboard address.</li>
+      </ol>
+      <div class="box warn">
+        <strong>Only boot messages appear in Serial Monitor</strong>
+        This usually means the firmware sends application logs through the other interface. Upload the <code>esp32-c6-n16-uart</code> profile for a USB-to-UART connector, or <code>esp32-c6-n16</code> for native USB. Keep the monitor at 115200 baud and press RESET after opening it.
+      </div>
+      <h3>Onboard RGB LED test</h3>
+      <p>Open the dashboard and use the <strong>LED RGB Onboard</strong> card. Choose a color and brightness, then press ON or OFF. Enable <strong>Test blink</strong> and enter an on/off interval from 100 to 60000 ms. At 500 ms, the LED remains on for 0.5 seconds and off for 0.5 seconds. Manual ON/OFF stops the blink test.</p>
+      <h3>Control the LED from a phone over Bluetooth LE</h3>
+      <ol class="steps">
+        <li>In <strong>Bluetooth LE — LED control</strong>, enable BLE, choose a 1-20 character device name and save. The board restarts to apply the radio configuration.</li>
+        <li>Install <strong>nRF Connect for Mobile</strong>, scan for the configured name (default <code>ESP32-HA-Kit</code>) and connect.</li>
+        <li>Open Nordic UART Service <code>6e400001-b5a3-f393-e0a9-e50e24dcca9e</code>.</li>
+        <li>Write one Text / UTF-8 command at a time to RX <code>6e400002-b5a3-f393-e0a9-e50e24dcca9e</code>. Enable notifications on TX <code>6e400003-b5a3-f393-e0a9-e50e24dcca9e</code> to receive <code>OK</code> or an error.</li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <tr><th>BLE command</th><th>Result</th></tr>
+          <tr><td><code>ON</code> / <code>OFF</code></td><td>Turns the RGB LED on or off and stops blink mode.</td></tr>
+          <tr><td><code>COLOR #FF0000</code></td><td>Selects red. The command accepts a six-digit hexadecimal RGB color.</td></tr>
+          <tr><td><code>BRIGHT 25</code></td><td>Sets brightness from 0 to 100 percent.</td></tr>
+          <tr><td><code>BLINK 500</code></td><td>Starts blink mode with a 500 ms on/off interval; valid range is 100-60000 ms.</td></tr>
+          <tr><td><code>BLINK OFF</code></td><td>Stops blinking and restores the preceding logical ON/OFF state.</td></tr>
+          <tr><td><code>STATUS</code></td><td>Refreshes the readable LED state and returns <code>OK</code>.</td></tr>
+        </table>
+      </div>
+      <div class="box warn">
+        <strong>BLE test access</strong>
+        The test service does not require a PIN or pairing. Any nearby BLE client can control the onboard LED while BLE is enabled. Disable BLE from the dashboard when the test is complete. ESP32-C6 supports Bluetooth Low Energy; it does not support Bluetooth Classic or <code>BluetoothSerial</code>.
       </div>
     </div>
   </section>
@@ -299,7 +361,7 @@
           <tr><th>Profile</th><th>DHT</th><th>PIR</th><th>Relay</th><th>Heartbeat</th><th>SDA</th><th>SCL</th><th>Onboard RGB</th></tr>
           <tr><td>ESP32-WROOM-32</td><td>4</td><td>32</td><td>23</td><td>18</td><td>21</td><td>22</td><td>&mdash;</td></tr>
           <tr><td>ESP32-C3</td><td>4</td><td>3</td><td>7</td><td>10</td><td>6</td><td>5</td><td>8</td></tr>
-          <tr><td>ESP32-C6</td><td>2</td><td>3</td><td>7</td><td>18</td><td>6</td><td>10</td><td>8</td></tr>
+          <tr><td>ESP32-C6 / C6-N16 DevKitC-1</td><td>2</td><td>3</td><td>7</td><td>18</td><td>6</td><td>10</td><td>8</td></tr>
           <tr><td>ESP32-C6 Super Mini</td><td>0</td><td>1</td><td>2</td><td>3</td><td>20</td><td>19</td><td>8*</td></tr>
           <tr><td>ESP32-S3</td><td>4</td><td>5</td><td>7</td><td>18</td><td>8</td><td>9</td><td>48/38*</td></tr>
         </table>
@@ -322,7 +384,7 @@
       <div class="table-wrap">
         <table>
           <tr><th>Tab</th><th>Function</th></tr>
-          <tr><td>Dashboard</td><td>Shows detected or enabled components only; controls the relay and onboard RGB LED.</td></tr>
+          <tr><td>Dashboard</td><td>Shows detected or enabled components; controls the relay and onboard RGB LED, including configurable blink testing.</td></tr>
           <tr><td>MQTT</td><td>Broker settings and connection status.</td></tr>
           <tr><td>WiFi</td><td>Change or delete the stored network.</td></tr>
           <tr><td>Hardware</td><td>Enable/disable components, select GPIOs and inspect the board pinout.</td></tr>
@@ -336,7 +398,7 @@
       </div>
       <div class="box info">
         <strong>Onboard RGB LED</strong>
-        Color, brightness and ON/OFF controls are available without external wiring on profiles that declare an RGB LED. The WROOM profile does not show this card unless the board declares a compatible RGB LED.
+        Color, brightness, ON/OFF and configurable blink controls are available without external wiring on profiles that declare an RGB LED. On ESP32-C6-N16, the same LED can be controlled from a phone through the optional BLE test service. The WROOM profile does not show this card unless the board declares a compatible RGB LED.
       </div>
     </div>
   </section>
@@ -372,6 +434,9 @@
       <div class="box warn"><strong>The WROOM serial port is missing</strong>Use a USB data cable and install the driver for the board's USB-to-UART bridge, usually CP210x or CH340.</div>
       <div class="box warn"><strong>The S3 serial port is missing</strong>Use a USB data cable and the correct port. Depending on the connection, the board may appear through native USB or a USB-to-UART bridge.</div>
       <div class="box warn"><strong>C6 Super Mini does not flash</strong>Use a USB-C data cable and the BOOT + RESET sequence described in the ESPHome section. On Linux check <code>/dev/ttyACM*</code>; on Windows check Device Manager for the COM port.</div>
+      <div class="box warn"><strong>ESP32-C6-N16 shows boot logs but no application messages</strong>Use <code>esp32-c6-n16-uart</code> with a USB-to-UART bridge, or <code>esp32-c6-n16</code> with native USB. Open Serial Monitor at 115200 baud and press RESET.</div>
+      <div class="box warn"><strong>The phone cannot find the ESP32-C6-N16</strong>Enable BLE in the dashboard and save the setting, wait for the board to restart, enable Bluetooth and location permission for the scanner app, then scan for the configured name. Disconnect another phone that may already be connected.</div>
+      <div class="box warn"><strong>BLE connects but the LED does not change</strong>Use the RX characteristic with Write request and Text / UTF-8 format. Send one documented command per write. Confirm that the dashboard reports an onboard RGB LED and use <code>BRIGHT 25</code> before <code>ON</code> if brightness was set to zero.</div>
       <div class="box warn"><strong>ESPHome is not discovered by Home Assistant</strong>Verify that the board and Home Assistant are on the same network, try the IP address instead of the <code>.local</code> name, and enter the exact <code>api_encryption_key</code> value.</div>
       <div class="box info">
         <strong>Separate reset actions</strong>
@@ -381,7 +446,7 @@
   </section>
 
   <div class="footer">
-    ESP32 MQTT Home Assistant DIY Kit &bull; Client Guide EN &bull; Version 3.0 &bull; June 2026
+    ESP32 MQTT Home Assistant DIY Kit &bull; Client Guide EN &bull; Version 3.1 &bull; September 2026
   </div>
 </main>
 </body>

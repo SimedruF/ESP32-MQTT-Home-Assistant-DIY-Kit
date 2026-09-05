@@ -51,11 +51,11 @@ void WiFiWebManager::on(const String& uri, HTTPMethod method, RouteCallback hand
 }
 
 bool WiFiWebManager::isConnected() const {
-    return _wifiConnected;
+    return !_isAPMode && WiFi.status() == WL_CONNECTED;
 }
 
 String WiFiWebManager::getIPAddress() const {
-    if (_wifiConnected) {
+    if (!_isAPMode) {
         return WiFi.localIP().toString();
     } else {
         return WiFi.softAPIP().toString();

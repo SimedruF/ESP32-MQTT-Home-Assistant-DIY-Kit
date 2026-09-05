@@ -40,6 +40,7 @@
 #include <esp_system.h>
 #include <soc/soc_caps.h>
 #include <SerialLog.h>
+#include <BleLedControl.h>
 
 #define DHT_TYPE        DHT11
 
@@ -176,6 +177,14 @@ bool isValidCoordinatorHost(const String& host)
   return true;
 }
 
+// Missing settings are normal on first boot; keep their defaults without
+// asking Preferences::getString to read a nonexistent NVS key.
+static String readOptionalString(Preferences& prefs, const char* key,
+                                 const String& fallback)
+{
+  return prefs.isKey(key) ? prefs.getString(key, fallback) : fallback;
+}
+
 void loadCommunicationConfig()
 {
   if (!communicationPrefs.begin("iot_radio", false))
@@ -184,13 +193,13 @@ void loadCommunicationConfig()
     return;
   }
 
-  const String storedMode = communicationPrefs.getString("protocol", "wifi_mqtt");
+  const String storedMode = readOptionalString(communicationPrefs, "protocol", "wifi_mqtt");
   const String storedCoordinator =
-    communicationPrefs.getString("zb_coord", "generic");
+    readOptionalString(communicationPrefs, "zb_coord", "generic");
   const String storedCoordinatorHost =
-    communicationPrefs.getString("zb_host", "");
+    readOptionalString(communicationPrefs, "zb_host", "");
   const String storedPairingMode =
-    communicationPrefs.getString("zb_pair", "auto");
+    readOptionalString(communicationPrefs, "zb_pair", "auto");
   communicationPrefs.end();
   g_selectedCommunication = isValidCommunicationMode(storedMode)
     ? storedMode
@@ -250,7 +259,7 @@ void loadUiConfig()
     serialLog.println("[UI] NVS indisponibil; se foloseste limba romana");
     return;
   }
-  g_uiLanguage = uiPrefs.getString("language", "ro");
+  g_uiLanguage = readOptionalString(uiPrefs, "language", "ro");
   if (g_uiLanguage != "ro" && g_uiLanguage != "en")
     g_uiLanguage = "ro";
   uiPrefs.end();
@@ -276,23 +285,23 @@ void loadMqttConfig()
     serialLog.println("[MQTT] NVS indisponibil; se foloseste configuratia implicita");
     return;
   }
-  g_mqttBroker   = mqttPrefs.getString("broker",   g_mqttBroker);
+  g_mqttBroker   = readOptionalString(mqttPrefs, "broker",   g_mqttBroker);
   g_mqttPort     = mqttPrefs.getInt(   "port",     g_mqttPort);
-  g_mqttUser     = mqttPrefs.getString("user",     g_mqttUser);
-  g_mqttPass     = mqttPrefs.getString("pass",     g_mqttPass);
-  g_mqttClientId = mqttPrefs.getString("client_id",g_mqttClientId);
+  g_mqttUser     = readOptionalString(mqttPrefs, "user",     g_mqttUser);
+  g_mqttPass     = readOptionalString(mqttPrefs, "pass",     g_mqttPass);
+  g_mqttClientId = readOptionalString(mqttPrefs, "client_id",g_mqttClientId);
   const String storedTopicState =
-    mqttPrefs.getString("topic_state", g_topicState);
+    readOptionalString(mqttPrefs, "topic_state", g_topicState);
   const String storedRelayState =
-    mqttPrefs.getString("relay_state", g_topicRelayState);
+    readOptionalString(mqttPrefs, "relay_state", g_topicRelayState);
   const String storedRelayCommand =
-    mqttPrefs.getString("relay_cmd", g_topicRelayCommand);
+    readOptionalString(mqttPrefs, "relay_cmd", g_topicRelayCommand);
   const String storedDigitalInputTopic =
-    mqttPrefs.getString("din_topic", g_topicDigitalInput);
+    readOptionalString(mqttPrefs, "din_topic", g_topicDigitalInput);
   const String storedDigitalInputActive =
-    mqttPrefs.getString("din_on", g_digitalInputPayloadActive);
+    readOptionalString(mqttPrefs, "din_on", g_digitalInputPayloadActive);
   const String storedDigitalInputInactive =
-    mqttPrefs.getString("din_off", g_digitalInputPayloadInactive);
+    readOptionalString(mqttPrefs, "din_off", g_digitalInputPayloadInactive);
   const bool storedDigitalInputRetain =
     mqttPrefs.getBool("din_retain", g_digitalInputRetain);
   mqttPrefs.end();
@@ -410,10 +419,17 @@ static constexpr bool RGB_LED_SUPPORTED = false;
 #endif
 
 static bool g_rgbLedOn = false;
+static bool g_rgbLedBlink = false;
+static bool g_rgbLedBlinkPhase = true;
+static uint32_t g_rgbLedBlinkIntervalMs = 500;
+static uint32_t g_rgbLedBlinkLastMs = 0;
 static uint8_t g_rgbLedRed = 0;
 static uint8_t g_rgbLedGreen = 128;
 static uint8_t g_rgbLedBlue = 255;
 static uint8_t g_rgbLedBrightness = 25;
+static bool g_bleEnabled = false;
+static bool g_bleActive = false;
+static String g_bleName = "ESP32-HA-Kit";
 
 // ============================================================
 //  Variabile partajate (protejate de mutex intre task-uri)
@@ -653,7 +669,7 @@ void persistResetLog()
 void applyRgbLed()
 {
 #if defined(RGB_BUILTIN)
-  if (!g_rgbLedOn)
+  if (!(g_rgbLedBlink ? g_rgbLedBlinkPhase : g_rgbLedOn))
   {
     rgbLedWrite(RGB_BUILTIN, 0, 0, 0);
     return;
@@ -669,14 +685,102 @@ void applyRgbLed()
 #endif
 }
 
+void setRgbLedMode(bool on, bool blink, uint32_t interval)
+{
+  if (blink && (!g_rgbLedBlink || interval != g_rgbLedBlinkIntervalMs))
+  {
+    g_rgbLedBlinkPhase = true;
+    g_rgbLedBlinkLastMs = millis();
+  }
+  g_rgbLedOn = on;
+  g_rgbLedBlink = blink;
+  g_rgbLedBlinkIntervalMs = interval;
+  applyRgbLed();
+}
+
+void applyBleLedCommand(const led::Command& command)
+{
+  switch (command.action)
+  {
+    case led::Action::On: setRgbLedMode(true, false, g_rgbLedBlinkIntervalMs); break;
+    case led::Action::Off: setRgbLedMode(false, false, g_rgbLedBlinkIntervalMs); break;
+    case led::Action::Blink: setRgbLedMode(g_rgbLedOn, true, command.value); break;
+    case led::Action::StopBlink: setRgbLedMode(g_rgbLedOn, false, g_rgbLedBlinkIntervalMs); break;
+    case led::Action::Color:
+      g_rgbLedRed = (command.value >> 16) & 0xff;
+      g_rgbLedGreen = (command.value >> 8) & 0xff;
+      g_rgbLedBlue = command.value & 0xff;
+      applyRgbLed();
+      break;
+    case led::Action::Brightness:
+      g_rgbLedBrightness = static_cast<uint8_t>(command.value);
+      applyRgbLed();
+      break;
+    case led::Action::Status: break;
+  }
+  serialLog.printf("[BLE] LED %s, #%02X%02X%02X, %u%%, interval %lu ms\n",
+                   g_rgbLedBlink ? "BLINK" : (g_rgbLedOn ? "ON" : "OFF"),
+                   g_rgbLedRed, g_rgbLedGreen, g_rgbLedBlue, g_rgbLedBrightness,
+                   static_cast<unsigned long>(g_rgbLedBlinkIntervalMs));
+}
+
+bool validBleName(const String& name)
+{
+  if (name.isEmpty() || name.length() > 20) return false;
+  for (size_t i = 0; i < name.length(); ++i)
+  {
+    const char c = name[i];
+    if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+          (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
+  }
+  return true;
+}
+
+void loadBleConfig()
+{
+  Preferences prefs;
+  if (!prefs.begin("ble_led", false))
+  {
+    serialLog.println("[BLE] NVS indisponibil; BLE dezactivat");
+    return;
+  }
+  const String saved = readOptionalString(prefs, "config", "0|ESP32-HA-Kit");
+  prefs.end();
+  if (saved.length() >= 3 && saved[1] == '|' &&
+      (saved[0] == '0' || saved[0] == '1') && validBleName(saved.substring(2)))
+  {
+    g_bleEnabled = saved[0] == '1';
+    g_bleName = saved.substring(2);
+  }
+}
+
+// Run from loop(), on the same task as the HTTP handlers. No blocking delay.
+void handleRgbLedBlink()
+{
+  if (!RGB_LED_SUPPORTED || !g_rgbLedBlink) return;
+  const uint32_t now = millis();
+  const uint32_t steps = (now - g_rgbLedBlinkLastMs) / g_rgbLedBlinkIntervalMs;
+  if (steps == 0) return;
+  g_rgbLedBlinkLastMs += steps * g_rgbLedBlinkIntervalMs;
+  if (steps % 2 != 0)
+  {
+    g_rgbLedBlinkPhase = !g_rgbLedBlinkPhase;
+    applyRgbLed();
+  }
+}
+
 String rgbLedStateJson()
 {
   String json;
-  json.reserve(120);
+  json.reserve(180);
   json = F("{\"supported\":");
   json += RGB_LED_SUPPORTED ? F("true") : F("false");
   json += F(",\"on\":");
   json += g_rgbLedOn ? F("true") : F("false");
+  json += F(",\"blink\":");
+  json += g_rgbLedBlink ? F("true") : F("false");
+  json += F(",\"interval_ms\":");
+  json += g_rgbLedBlinkIntervalMs;
   json += F(",\"red\":");
   json += g_rgbLedRed;
   json += F(",\"green\":");
@@ -1534,49 +1638,122 @@ void handleApiRgbLedPost(WebServer& server)
     return;
   }
 
-  if (server.hasArg("red") && server.hasArg("green") && server.hasArg("blue"))
-  {
-    const long red = server.arg("red").toInt();
-    const long green = server.arg("green").toInt();
-    const long blue = server.arg("blue").toInt();
-    if (red < 0 || red > 255 || green < 0 || green > 255 || blue < 0 || blue > 255)
+  // Validate the entire request before changing the running LED test.
+  auto readNumber = [&server](const char* key, uint32_t fallback,
+                              uint32_t minimum, uint32_t maximum, uint32_t& value) {
+    value = fallback;
+    if (!server.hasArg(key)) return true;
+    const String text = server.arg(key);
+    if (text.isEmpty()) return false;
+    uint32_t parsed = 0;
+    for (size_t i = 0; i < text.length(); ++i)
     {
-      server.send(400, "application/json",
-                  "{\"ok\":false,\"error\":\"valorile RGB trebuie sa fie intre 0 si 255\"}");
+      if (text[i] < '0' || text[i] > '9') return false;
+      const uint32_t digit = text[i] - '0';
+      if (parsed > maximum / 10 ||
+          (parsed == maximum / 10 && digit > maximum % 10)) return false;
+      parsed = parsed * 10 + digit;
+    }
+    if (parsed < minimum) return false;
+    value = parsed;
+    return true;
+  };
+  uint32_t red, green, blue, brightness, interval;
+  if (!readNumber("red", g_rgbLedRed, 0, 255, red) ||
+      !readNumber("green", g_rgbLedGreen, 0, 255, green) ||
+      !readNumber("blue", g_rgbLedBlue, 0, 255, blue) ||
+      !readNumber("brightness", g_rgbLedBrightness, 0, 100, brightness) ||
+      !readNumber("interval_ms", g_rgbLedBlinkIntervalMs, 100, 60000, interval))
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"RGB: 0-255; brightness: 0-100; interval_ms: 100-60000 (integer)\"}");
+    return;
+  }
+  bool on = g_rgbLedOn;
+  bool blink = g_rgbLedBlink;
+  if (server.hasArg("blink"))
+  {
+    const String value = server.arg("blink");
+    if (value != "0" && value != "1")
+    {
+      server.send(400, "application/json", "{\"ok\":false,\"error\":\"blink: 0 or 1\"}");
       return;
     }
-    g_rgbLedRed = static_cast<uint8_t>(red);
-    g_rgbLedGreen = static_cast<uint8_t>(green);
-    g_rgbLedBlue = static_cast<uint8_t>(blue);
+    blink = value == "1";
   }
-
-  if (server.hasArg("brightness"))
-  {
-    const long brightness = server.arg("brightness").toInt();
-    if (brightness < 0 || brightness > 100)
-    {
-      server.send(400, "application/json",
-                  "{\"ok\":false,\"error\":\"luminozitatea trebuie sa fie intre 0 si 100\"}");
-      return;
-    }
-    g_rgbLedBrightness = static_cast<uint8_t>(brightness);
-  }
-
   if (server.hasArg("state"))
   {
-    const String state = server.arg("state");
-    g_rgbLedOn = state == "1" || state == "ON" || state == "on" || state == "true";
+    const String value = server.arg("state");
+    if (value != "0" && value != "1" && value != "ON" && value != "OFF" &&
+        value != "on" && value != "off" && value != "true" && value != "false")
+    {
+      server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid state\"}");
+      return;
+    }
+    on = value == "1" || value == "ON" || value == "on" || value == "true";
+    blink = false; // Manual ON/OFF always stops the test.
   }
-
-  applyRgbLed();
+  g_rgbLedRed = static_cast<uint8_t>(red);
+  g_rgbLedGreen = static_cast<uint8_t>(green);
+  g_rgbLedBlue = static_cast<uint8_t>(blue);
+  g_rgbLedBrightness = static_cast<uint8_t>(brightness);
+  setRgbLedMode(on, blink, interval);
   serialLog.printf("[RGB] %s #%02X%02X%02X, luminozitate %u%%\n",
-                   g_rgbLedOn ? "ON" : "OFF",
+                   g_rgbLedBlink ? "BLINK" : (g_rgbLedOn ? "ON" : "OFF"),
                    g_rgbLedRed, g_rgbLedGreen, g_rgbLedBlue, g_rgbLedBrightness);
 
   String json = F("{\"ok\":true,\"led\":");
   json += rgbLedStateJson();
   json += '}';
   server.send(200, "application/json", json);
+}
+
+void handleBleConfigGet(WebServer& server)
+{
+  String json = "{\"supported\":";
+  json += (RGB_LED_SUPPORTED && bleLedSupported()) ? "true" : "false";
+  json += ",\"enabled\":";
+  json += g_bleEnabled ? "true" : "false";
+  json += ",\"active\":";
+  json += g_bleActive ? "true" : "false";
+  json += ",\"connected\":";
+  json += bleLedConnected() ? "true" : "false";
+  json += ",\"name\":\"" + jsonEscape(g_bleName) + "\"";
+  json += ",\"service_uuid\":\"" + String(BLE_LED_SERVICE) + "\"";
+  json += ",\"rx_uuid\":\"" + String(BLE_LED_RX) + "\"";
+  json += ",\"tx_uuid\":\"" + String(BLE_LED_TX) + "\"";
+  json += ",\"state_uuid\":\"" + String(BLE_LED_STATE) + "\"";
+  json += ",\"led\":" + rgbLedStateJson() + "}";
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", json);
+}
+
+void handleBleConfigPost(WebServer& server)
+{
+  if (!RGB_LED_SUPPORTED || !bleLedSupported())
+  {
+    server.send(409, "application/json", "{\"ok\":false,\"error\":\"BLE LED unavailable\"}");
+    return;
+  }
+  const String enabled = server.arg("enabled");
+  const String name = server.arg("name");
+  if ((enabled != "0" && enabled != "1") || !validBleName(name))
+  {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid BLE configuration\"}");
+    return;
+  }
+  Preferences prefs;
+  const String config = enabled + "|" + name;
+  const bool opened = prefs.begin("ble_led", false);
+  const bool saved = opened && prefs.putString("config", config) == config.length();
+  if (opened) prefs.end();
+  if (!saved)
+  {
+    server.send(500, "application/json", "{\"ok\":false,\"error\":\"BLE configuration not saved\"}");
+    return;
+  }
+  server.send(200, "application/json", "{\"ok\":true,\"restart\":true}");
+  g_restartAt = millis() + 2000;
 }
 
 // GET /api/mqtt_config  → returneaza configuratia curenta (fara parola)
@@ -2070,6 +2247,8 @@ void setup()
   wifiManager.on("/data",                HTTP_GET,  handleData);
   wifiManager.on("/api/status",          HTTP_GET,  handleApiStatus);
   wifiManager.on("/api/relay",           HTTP_GET,  handleApiRelay);
+  wifiManager.on("/api/ble_config",      HTTP_GET,  handleBleConfigGet);
+  wifiManager.on("/api/ble_config",      HTTP_POST, handleBleConfigPost);
   wifiManager.on("/api/rgb_led",         HTTP_GET,  handleApiRgbLedGet);
   wifiManager.on("/api/rgb_led",         HTTP_POST, handleApiRgbLedPost);
   wifiManager.on("/api/serial_log",      HTTP_GET,  handleSerialLog);
@@ -2091,6 +2270,13 @@ void setup()
   mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(768);
 
+  loadBleConfig();
+  if (g_bleEnabled && RGB_LED_SUPPORTED && bleLedSupported())
+  {
+    g_bleActive = bleLedBegin(g_bleName, applyBleLedCommand, rgbLedStateJson);
+    if (!g_bleActive) serialLog.println("[BLE] Initializarea a esuat");
+  }
+
   // xTaskCreate este portabil pe tintele single-core si dual-core.
   xTaskCreate(taskSensors, "taskSensors", 4096, nullptr, 2, nullptr);
   if (g_hardware.heartbeatPin != PIN_DISABLED)
@@ -2111,6 +2297,8 @@ void setup()
 void loop()
 {
   wifiManager.handleClient();
+  bleLedPoll();
+  handleRgbLedBlink();
   handleMqtt();
 
   if (g_restartAt != 0 && static_cast<long>(millis() - g_restartAt) >= 0)
@@ -2206,7 +2394,9 @@ void loop()
     serialLog.printf("  WiFi: %s | MQTT: %s\n",
                      wifiManager.isConnected()
                        ? ("STA " + wifiManager.getIPAddress()).c_str()
-                       : "AP mode",
+                       : (wifiManager.isAPMode() ? "AP mode" : "Deconectat"),
                      g_mqttConnected ? "Conectat" : "Deconectat");
+    if (wifiManager.isAPMode() || wifiManager.isConnected())
+      serialLog.println("  [Web] http://" + wifiManager.getIPAddress());
   }
 }

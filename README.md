@@ -2,114 +2,119 @@
 
 > Developed by **Automatic House Systems**
 
-[English version](README_EN.md)
+[Romanian version](README.md)
 
-[Ghid client HTML](Ghid_Configurare_Client.html) |
-[Ghid client PDF](Ghid_Configurare_Client.pdf)
+[English client guide HTML](Client_Configuration_Guide.html) |
+[English client guide PDF](Client_Configuration_Guide.pdf)
 
-Kit DIY complet pentru monitorizarea temperaturii, umidității, mișcării și controlul unui releu SSR, cu integrare nativă în **Home Assistant** prin **MQTT Auto-Discovery** și dashboard web configurat direct din browser.
-
----
-
-## Cuprins
-
-- [Caracteristici](#caracteristici)
-- [Hardware necesar](#hardware-necesar)
-- [Schema de cablaj](#schema-de-cablaj)
-- [Instalare și configurare](#instalare-și-configurare)
-- [Interfața web](#interfața-web)
-- [MQTT și Home Assistant](#mqtt-și-home-assistant)
-- [Firmware ESPHome alternativ](#firmware-esphome-alternativ)
-- [Structura proiectului](#structura-proiectului)
-- [Build și upload](#build-și-upload)
-- [Depanare](#depanare)
+A complete DIY kit for temperature, humidity and motion monitoring and SSR relay
+control, with native **Home Assistant** integration through **MQTT
+Auto-Discovery** and a web dashboard configured directly from a browser.
 
 ---
 
-## Caracteristici
+## Contents
 
-- **Senzor temperatură/umiditate** — DHT11 (KY-015), citire la fiecare 2 secunde
-- **Senzor de mișcare PIR** — HC-SR501, detecție în timp real
-- **Releu SSR** — control ON/OFF din interfața web sau prin MQTT
-- **Display OLED 0.96"** — afișare status complet (temp, umiditate, mișcare, releu, WiFi, MQTT)
-- **MQTT Auto-Discovery** — entitățile apar automat în Home Assistant fără configurare manuală
-- **Dashboard web** — monitorizare, configurare MQTT/WiFi/hardware și informații despre placă
-- **Configurare WiFi din browser** — fără a rescrie firmware-ul
-- **Configurare MQTT din browser** — broker/port/user/parolă salvate în memorie NVS
-- **Configurare hardware din browser** — GPIO pentru fiecare periferic, salvate în NVS
-- **Multi-board** — profile PlatformIO pentru ESP32-WROOM-32, ESP32-C3, ESP32-C6, ESP32-C6 Super Mini, ESP32-S3 și LILYGO T-ZIGBEE
-- **Inventar GPIO** — pini liberi, ocupați, doar-input, rezervați și pini de boot/USB
-- **Pinout vizual** — desen simplificat al plăcii, cu ordinea pinilor și evidențierea funcțiilor selectate
-- **FreeRTOS portabil** — funcționează pe variante ESP32 single-core și dual-core
-- **Heartbeat LED** — indicator vizual că firmware-ul rulează
+- [Features](#features)
+- [Required hardware](#required-hardware)
+- [Wiring](#wiring)
+- [Installation and configuration](#installation-and-configuration)
+- [Web interface](#web-interface)
+- [MQTT and Home Assistant](#mqtt-and-home-assistant)
+- [Alternative ESPHome firmware](#alternative-esphome-firmware)
+- [Project structure](#project-structure)
+- [Build and upload](#build-and-upload)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## Hardware necesar
+## Features
 
-| Componentă | Specificații | Cantitate |
-|---|---|---|
-| ESP32 | WROOM-32, C3-DevKitM-1, C6-DevKitC-1, C6 Super Mini, S3-DevKitC-1 sau LILYGO T-ZIGBEE | 1 |
-| Senzor DHT11 | Modul KY-015 cu rezistență pull-up inclusă | 1 |
-| Senzor PIR | HC-SR501 | 1 |
-| Releu SSR | Low-level trigger 5V (LOW = ON) | 1 |
-| Display OLED | 0.96" SSD1306, I2C, 128×64 px | 1 |
-| LED | Orice culoare + rezistență 220Ω | 1 |
-| Sursă de alimentare | 5V/2A USB sau adaptor | 1 |
+- **Temperature/humidity sensor** - DHT11 (KY-015), read every 2 seconds
+- **PIR motion sensor** - HC-SR501, real-time detection
+- **SSR relay** - ON/OFF control from the web interface or MQTT
+- **0.96-inch OLED display** - temperature, humidity, motion, relay, Wi-Fi and MQTT status
+- **MQTT Auto-Discovery** - entities appear automatically in Home Assistant
+- **Web dashboard** - monitoring, MQTT/Wi-Fi/hardware configuration and board information
+- **Browser Wi-Fi configuration** - no firmware rebuild required
+- **Browser MQTT configuration** - broker, credentials and publish/command topics stored in NVS
+- **Browser hardware configuration** - GPIO assignments stored in NVS
+- **Multiple boards** - PlatformIO profiles for ESP32-WROOM-32, ESP32-C3,
+  ESP32-C6, ESP32-C6 Super Mini, ESP32-S3 and LILYGO T-ZIGBEE
+- **GPIO inventory** - free, occupied, input-only, reserved, boot and USB pins
+- **Visual pinout** - simplified board drawing with selected functions highlighted
+- **Portable FreeRTOS implementation** - supports single-core and dual-core ESP32 variants
+- **Heartbeat LED** - visual indication that the firmware is running
 
 ---
 
-## Schema de cablaj
+## Required hardware
 
-### ESP32 → DHT11 (KY-015)
+| Component | Specification | Quantity |
+|---|---|---:|
+| ESP32 | WROOM-32, C3-DevKitM-1, C6-DevKitC-1, C6 Super Mini, S3-DevKitC-1 or LILYGO T-ZIGBEE | 1 |
+| DHT11 sensor | KY-015 module with pull-up resistor | 1 |
+| PIR sensor | HC-SR501 | 1 |
+| SSR relay | 5 V low-level trigger module (LOW = ON) | 1 |
+| OLED display | 0.96-inch SSD1306, I2C, 128x64 px | 1 |
+| LED | Any color with a 220 ohm resistor | 1 |
+| Power supply | 5 V/2 A USB supply or adapter | 1 |
+
+---
+
+## Wiring
+
+### ESP32 to DHT11 (KY-015)
 
 | ESP32 | DHT11 KY-015 |
 |---|---|
 | GPIO4 | S (Data) |
-| 3.3V | + (VCC) |
+| 3.3 V | + (VCC) |
 | GND | - (GND) |
 
-> ⚠️ **Atenție:** Folosiți **3.3V** pentru alimentarea DHT11, nu 5V!
+> **Warning:** Power the DHT11 from **3.3 V**, not 5 V.
 
-### ESP32 → PIR HC-SR501
+### ESP32 to PIR HC-SR501
 
 | ESP32 | HC-SR501 |
 |---|---|
 | GPIO32 | OUT |
-| 5V | VCC |
+| 5 V | VCC |
 | GND | GND |
 
-> PIR HC-SR501 necesită alimentare la **5V** pentru funcționare corectă.
+The HC-SR501 normally requires a **5 V** supply.
 
-### ESP32 → OLED SSD1306 (I2C)
+### ESP32 to OLED SSD1306 (I2C)
 
 | ESP32 | OLED SSD1306 |
 |---|---|
 | GPIO21 (SDA) | SDA |
 | GPIO22 (SCL) | SCL |
-| 3.3V | VCC |
+| 3.3 V | VCC |
 | GND | GND |
 
-### ESP32 → Releu SSR
+### ESP32 to SSR relay
 
-| ESP32 | Releu SSR |
+| ESP32 | SSR relay |
 |---|---|
-| GPIO23 | IN (semnal control) |
-| 5V | VCC |
+| GPIO23 | IN (control signal) |
+| 5 V | VCC |
 | GND | GND |
 
-> Releul este **Low-Level trigger**: GPIO23 = LOW → releu ON; GPIO23 = HIGH → releu OFF.
+The relay uses **low-level triggering**: GPIO23 LOW turns it on and GPIO23 HIGH
+turns it off.
 
-### LED Heartbeat
+### Heartbeat LED
 
 | ESP32 | LED |
 |---|---|
-| GPIO18 | Anod (+) prin 220Ω |
-| GND | Catod (-) |
+| GPIO18 | Anode (+) through 220 ohm |
+| GND | Cathode (-) |
 
-Valorile de mai sus sunt profilul implicit `esp32-wroom`. Pentru celelalte medii:
+The values above belong to the default `esp32-wroom` profile. Other environments
+use these defaults:
 
-| Mediu PlatformIO | DHT | PIR | Releu | Heartbeat | SDA | SCL |
+| PlatformIO environment | DHT | PIR | Relay | Heartbeat | SDA | SCL |
 |---|---:|---:|---:|---:|---:|---:|
 | `esp32-wroom` | 4 | 32 | 23 | 18 | 21 | 22 |
 | `esp32-c3` | 4 | 3 | 7 | 10 | 6 | 5 |
@@ -118,23 +123,23 @@ Valorile de mai sus sunt profilul implicit `esp32-wroom`. Pentru celelalte medii
 | `esp32-c6-supermini` | 0 | 1 | 2 | 3 | 20 | 19 |
 | `esp32-s3` | 4 | 5 | 7 | 18 | 8 | 9 |
 
-Pinii pot fi schimbați ulterior din tab-ul **Hardware**. Valoarea `-1`, afișată în interfață ca
-**Dezactivat / neconfigurat**, oprește perifericul respectiv.
+Pins can later be changed from the **Hardware** tab. A value of `-1`, displayed
+as **Disabled / not configured**, disables that peripheral.
 
 ---
 
-## Instalare și configurare
+## Installation and configuration
 
-### Pas 1 — Clonează și deschide proiectul
+### Step 1 - Clone and open the project
 
 ```bash
 git clone https://github.com/SimedruF/ESP32-MQTT-Home-Assistant-DIY-Kit.git
 cd "ESP32-MQTT-Home-Assistant-DIY-Kit"
 ```
 
-Deschide folderul în **VS Code** cu extensia **PlatformIO IDE** instalată.
+Open the folder in **VS Code** with the **PlatformIO IDE** extension installed.
 
-### Pas 2 — Build și upload firmware
+### Step 2 - Build and upload the firmware
 
 ```bash
 # ESP32-WROOM-32
@@ -156,166 +161,160 @@ pio run -e esp32-c6-supermini -t upload
 pio run -e esp32-s3 -t upload
 ```
 
-Profilul `esp32-s3` este pentru varianta N8 fără PSRAM. La modulele S3 cu memorie
-Octal, GPIO35, GPIO36 și GPIO37 sunt folosiți intern și nu trebuie conectați la periferice.
+The `esp32-s3` profile targets the N8 version without PSRAM. On S3 modules with
+Octal memory, GPIO35, GPIO36 and GPIO37 are used internally and must not be
+connected to peripherals.
 
-Pentru `lilygo-t-zigbee`, selectează modul ESP32-C3 din comutatoarele DIP și folosește
-adaptorul T-U2T pentru upload și log serial. Profilul pornește TLSR8258 prin GPIO0 și
-protejează GPIO18/19, folosiți de UART-ul intern Zigbee. Firmware-ul principal rămâne
-MQTT prin WiFi; biblioteca HCI pentru operarea rețelei Zigbee nu este încă activată.
-GPIO8 este folosit ca SDA; rezistența pull-up I2C păstrează nivelul de boot necesar
-acestui pin de strapping.
+For `lilygo-t-zigbee`, select the ESP32-C3 side with the DIP switches and use a
+T-U2T adapter for upload and serial logging. The profile powers the TLSR8258
+through GPIO0 and protects GPIO18/GPIO19, which are used by the internal Zigbee
+UART. The primary firmware still uses MQTT over Wi-Fi; the HCI library required
+to operate the Zigbee network is not enabled. GPIO8 is used as SDA, and the I2C
+pull-up preserves the boot level required by this strapping pin.
 
-Configurația DIP pentru programarea ESP32-C3 este `3=ON`, `4=ON`, iar
-`1=OFF`, `2=OFF`, `5=OFF`, cu marcajul `ON` al blocului DIP ca reper. Portul USB-C
-al plăcii nu include un convertor USB-serial și nu se va enumera direct în sistem;
-T-U2T trebuie conectat între placă și portul USB al calculatorului.
+The DIP switch configuration for programming the ESP32-C3 is `3=ON`, `4=ON`,
+with `1=OFF`, `2=OFF` and `5=OFF`. Use the `ON` marking on the switch block as
+the reference. The board USB-C connector does not contain a USB-to-serial
+converter and will not enumerate directly. The T-U2T adapter must be installed
+between the board and the computer.
 
-Ordinea fizică este `PC -> cablu USB de date -> mufa USB-C mamă T-U2T ->
-conectorul USB-C tată T-U2T -> mufa USB-C a plăcii`. Pentru diagnostic, T-U2T
-poate fi conectat la PC fără placă: adaptorul trebuie să apară în `lsusb`. Dacă
-enumerarea eșuează deja în acest test, problema este adaptorul, cablul, contactul
-USB-C sau portul/hub-ul USB, nu ESP32-C3 și nici poziția DIP.
+The physical connection order is:
 
-Pentru `esp32-c6-supermini`, conectarea se face direct prin USB-C; placa folosește
-interfața USB Serial/JTAG integrată și apare de regulă ca `/dev/ttyACM0`. La prima
-programare, sau dacă upload-ul nu poate reseta automat placa, ține apăsat **BOOT**,
-apasă și eliberează **RESET**, apoi eliberează **BOOT** și pornește imediat upload-ul.
-Profilul evită intenționat comenzile RTS/DTR care eșuează pe unele combinații
-Linux + USB Serial/JTAG. După terminarea upload-ului, apasă **RESET** pentru pornire.
+```text
+PC -> USB data cable -> T-U2T female USB-C connector
+   -> T-U2T male USB-C connector -> board USB-C connector
+```
 
-Pe plăcile cu radio Zigbee, dashboard-ul afișează tab-ul **Comunicare IoT**.
-Selecția `MQTT prin WiFi`, `Zigbee` sau `Thread` este salvată în NVS și este ascunsă
-pe plăcile fără capabilități Zigbee. Interfața afișează separat modul selectat și
-modul activ real. Zigbee și Thread necesită în continuare un firmware construit cu
-stack-ul corespunzător; schimbarea selecției nu poate transforma firmware-ul MQTT
-deja instalat într-un firmware Zigbee sau Thread.
+For diagnostics, connect the T-U2T to the PC without the board. The adapter must
+appear in `lsusb`. If enumeration already fails, the problem is the adapter,
+cable, USB-C contact or USB port/hub, not the ESP32-C3 or DIP switch positions.
 
-Pentru Zigbee poate fi salvat și un profil de coordinator: generic, Home Assistant
-ZHA, Zigbee2MQTT sau SONOFF ZBBridge-U. Adresa IP/numele local este folosit numai
-pentru deschiderea portalului coordinatorului. Dispozitivele Zigbee nu aleg
-coordinatorul prin IP; ele se alătură prin radio unei rețele aflate în `permit join`.
-Nu există un mod radio separat de pairing „SONOFF”: opțiunea SONOFF selectează doar
-instrucțiunile și portalul coordinatorului. Asocierea efectivă folosește procedura
-Zigbee standard de network steering.
+The `esp32-c6-supermini` connects directly through USB-C and uses the integrated
+USB Serial/JTAG interface. On Linux it normally appears as `/dev/ttyACM0`. For
+the first upload, or when automatic reset fails, hold **BOOT**, press and
+release **RESET**, release **BOOT**, then immediately start the upload. The
+profile intentionally avoids RTS/DTR reset commands that fail on some Linux
+USB Serial/JTAG combinations. Press **RESET** after upload to start the board.
 
-Selectorul de pairing are două moduri:
+Boards with a Zigbee radio show the **IoT Communication** tab. The `MQTT over
+Wi-Fi`, `Zigbee` or `Thread` selection is stored in NVS and hidden on boards
+without Zigbee capability. The interface separately reports the selected mode
+and the mode that is actually running. Zigbee and Thread require firmware built
+with the corresponding protocol stack; changing the selection cannot transform
+an installed MQTT firmware image into Zigbee or Thread firmware.
 
-- **Automat** — încearcă rejoin la rețeaua salvată; dacă nu există una, caută o
-  rețea Zigbee aflată în `permit join`.
-- **Rețea nouă** — șterge asocierea Zigbee la următoarea pornire și caută din nou
-  un coordinator. Cererea este resetată automat la **Automat** după utilizare.
+A Zigbee coordinator profile can also be stored: generic, Home Assistant ZHA,
+Zigbee2MQTT or SONOFF ZBBridge-U. The IP address or local hostname is used only
+to open the coordinator portal. Zigbee devices do not select a coordinator by
+IP address; they join by radio while a network has `permit join` enabled. There
+is no separate SONOFF radio pairing mode. The SONOFF option only selects the
+instructions and coordinator portal. Actual association uses standard Zigbee
+network steering.
 
-În firmware-ul original, ZBBridge-U pornește asocierea din **+ Add Device** și
-acceptă oficial numai dispozitive SONOFF și din ecosistemul eWeLink, deci un
-endpoint Zigbee personalizat pe ESP32-C6 nu are compatibilitate garantată.
+The pairing selector provides two modes:
 
-Firmware-ul Zigbee Router pentru ESP32-C6 SuperMini se compilează și se instalează
-separat:
+- **Automatic** - rejoins the stored network or searches for a Zigbee network
+  with `permit join` enabled.
+- **New network** - clears the Zigbee association on the next boot and searches
+  for a coordinator again. The request automatically returns to **Automatic**
+  after use.
+
+With its original firmware, ZBBridge-U starts pairing through **+ Add Device**
+and officially supports SONOFF and eWeLink ecosystem devices. Compatibility
+with a custom ESP32-C6 Zigbee endpoint is therefore not guaranteed.
+
+The ESP32-C6 Super Mini Zigbee Router firmware is built and installed separately:
 
 ```bash
 pio run -e esp32-c6-supermini-zigbee -t upload
 ```
 
-Înainte de upload, salvează selecția și modul de pairing din firmware-ul web.
-Upload-ul obișnuit păstrează NVS; nu folosi `erase`, deoarece acesta ar șterge
-configurația. Activează apoi **Permit join** în ZHA/Zigbee2MQTT sau **+ Add Device**
-în portalul ZBBridge-U și resetează placa.
+Before uploading it, save the selection and pairing mode in the web firmware.
+A normal upload preserves NVS; do not use `erase`, because it removes the
+configuration. Enable **Permit join** in ZHA/Zigbee2MQTT or **+ Add Device** in
+the ZBBridge-U portal, then reset the board.
 
-Firmware-ul Zigbee publică atribute standard, fără MQTT și fără adresă IP:
+The Zigbee firmware publishes standard attributes without MQTT or an IP address:
 
-- endpoint `10`: temperatură și umiditate DHT11, raportate la 30 de secunde;
-- endpoint `11`: ocupare PIR, raportată la schimbarea stării;
-- endpoint `12`: releu/priză, comandabil de coordinator prin clusterul On/Off.
+- endpoint `10`: DHT11 temperature and humidity, reported every 30 seconds;
+- endpoint `11`: PIR occupancy, reported when the state changes;
+- endpoint `12`: relay/outlet controlled through the On/Off cluster.
 
-După instalarea acestui target, pagina web nu mai este disponibilă. Pentru a
-schimba din nou configurația din browser trebuie reinstalat targetul
-`esp32-c6-supermini`, păstrând NVS.
+The web page is not available after installing this target. To use browser
+configuration again, reinstall the `esp32-c6-supermini` target while preserving
+NVS.
 
-Ținerea butonului **BOOT** apăsat timp de 5 secunde face factory reset Zigbee.
-Nu conecta periferice pe GPIO12 și GPIO13, deoarece acestea sunt liniile USB D-/D+.
-GPIO8 este rezervat LED-ului RGB onboard, iar GPIO9 este butonul BOOT.
+Holding **BOOT** for 5 seconds performs a Zigbee factory reset. Do not attach
+peripherals to GPIO12 or GPIO13 because they are the USB D-/D+ lines. GPIO8 is
+reserved for the onboard RGB LED and GPIO9 is the BOOT button.
 
-Sau folosește butoanele **Build** / **Upload** din bara PlatformIO în VS Code.
+The **Build** and **Upload** buttons in the PlatformIO toolbar can be used
+instead of the commands.
 
-### Pas 3 — Configurare WiFi
+### Step 3 - Configure Wi-Fi
 
-La prima pornire (sau dacă credențialele WiFi nu sunt salvate), ESP32 creează un Access Point:
+On first boot, or when no Wi-Fi credentials are stored, the board creates an
+access point:
 
 - **SSID:** `ESP32_HAKit`
-- **Parolă:** `12345678`
+- **Password:** `12345678`
 
-Conectează-te la acest AP și accesează `http://192.168.4.1` → tab **WiFi** → introdu SSID și parola rețelei tale → **Salvează**.
+Connect to this network, open `http://192.168.4.1`, select the **WiFi** tab,
+enter the router SSID and password, then save the settings.
 
-### Pas 4 — Configurare MQTT
+### Step 4 - Configure MQTT
 
-După conectarea la WiFi, accesează dashboard-ul la `http://esp32-ha-kit.local`.
-Ca alternativă, folosește IP-ul afișat pe OLED, în Serial Monitor sau în lista
-de clienți DHCP a routerului, unde placa apare cu hostname-ul `esp32-ha-kit`.
+After the board joins Wi-Fi, open `http://esp32-ha-kit.local`. Alternatively,
+use the IP displayed on the OLED, in Serial Monitor or in the router DHCP client
+list, where the hostname is `esp32-ha-kit`.
 
-Mergi la tab-ul **MQTT** și completează:
-- **Broker IP** — adresa IP a serverului MQTT (ex: IP-ul Home Assistant)
-- **Port** — implicit `1883`
-- **Client ID** — implicit `esp32-ha-kit`
-- **Username / Parolă** — dacă brokerul necesită autentificare
+Open the **MQTT** tab and enter:
 
-Apasă **Salvează** — ESP32 se reconectează automat cu noile setări.
+- **Broker IP** - address of the MQTT server, usually the Home Assistant host;
+- **Port** - `1883` by default;
+- **Client ID** - `esp32-ha-kit` by default;
+- **Username / Password** - when authentication is enabled on the broker.
+
+Press **Save**. The ESP32 reconnects using the new settings.
 
 ---
 
-## Interfața web
+## Web interface
 
-Accesează `http://<IP_ESP32>` din browser:
+Open `http://<ESP32_IP>` in a browser:
 
-| Tab | Funcționalitate |
+| Tab | Function |
 |---|---|
-| **Dashboard** | Monitorizare live: temperatură, umiditate, mișcare, releu; control ON/OFF releu |
-| **MQTT** | Configurare broker, port, autentificare și topice; status conexiune |
-| **WiFi** | Schimbare rețea WiFi; ștergere credențiale |
-| **Hardware** | Configurare GPIO, pinout vizual, polaritate releu, adresă OLED și inventar pini |
-| **Fișiere** | Listare, upload și download pentru fișierele din partiția SPIFFS |
-| **Board Info** | Informații tehnice: chip, profil build, frecvență, memorie, MAC, uptime |
+| **Dashboard** | Live temperature, humidity, motion and relay state; relay ON/OFF control |
+| **MQTT** | Broker, authentication and MQTT topic settings; connection state |
+| **WiFi** | Change the network or clear stored credentials |
+| **Hardware** | GPIO configuration, visual pinout, relay polarity, OLED address and pin inventory |
+| **Board Info** | Chip, build profile, frequency, memory, MAC address, uptime and capabilities |
 
-Date actualizate automat la **2 secunde** fără reîncărcare pagină.
-
-În tab-ul **MQTT** pot fi configurate și topicele pentru starea senzorilor,
-starea releului și comanda releului. Valorile sunt salvate în NVS, iar clientul
-se reconectează și republică Home Assistant Auto-Discovery cu noile topice.
-
-Tab-ul **Fișiere** afișează capacitatea totală, spațiul utilizat și fișierele din
-SPIFFS. Upload-ul păstrează numai numele fișierului, înlocuiește caracterele
-nesigure și suprascrie un fișier existent cu același nume. Fișierele pot fi
-descărcate direct din listă.
-
-La fiecare pornire, firmware-ul adaugă în `/reset-log.txt` motivul resetului,
-profilul plăcii și identificarea firmware-ului. După panică sau watchdog, dacă
-ESP-IDF a generat un coredump valid, jurnalul include motivul panicii, task-ul,
-PC-ul, registrele și backtrace-ul disponibil. Imaginea brută este copiată în
-`/last-coredump.bin`, de unde poate fi descărcată din același tab pentru analiză
-offline. Jurnalul este recreat când ajunge la 64 KB.
+Data is refreshed every **2 seconds** without reloading the page.
 
 ---
 
-## MQTT și Home Assistant
+## MQTT and Home Assistant
 
-### Entități create automat (Auto-Discovery)
+### Automatically created entities
 
-| Entitate HA | Tip | Topic stare |
+| Home Assistant entity | Type | State topic |
 |---|---|---|
-| `sensor.esp32kit_temperature` | Senzor temperatură (°C) | `esp32kit/state` |
-| `sensor.esp32kit_humidity` | Senzor umiditate (%) | `esp32kit/state` |
-| `binary_sensor.esp32kit_motion` | Senzor mișcare | `esp32kit/state` |
-| `switch.esp32kit_relay` | Comutator releu | `esp32kit/relay/state` |
+| `sensor.esp32kit_temperature` | Temperature sensor (deg C) | `esp32kit/state` |
+| `sensor.esp32kit_humidity` | Humidity sensor (%) | `esp32kit/state` |
+| `binary_sensor.esp32kit_motion` | Motion sensor | `esp32kit/state` |
+| `switch.esp32kit_relay` | Relay switch | `esp32kit/relay/state` |
 
-### Topice MQTT
+### MQTT topics
 
-| Topic | Direcție | Conținut |
+| Topic | Direction | Content |
 |---|---|---|
-| `esp32kit/state` | ESP32 → HA | JSON cu temperatură, umiditate, mișcare |
-| `esp32kit/relay/state` | ESP32 → HA | `ON` / `OFF` |
-| `esp32kit/relay/command` | HA → ESP32 | `ON` / `OFF` |
+| `esp32kit/state` | ESP32 -> HA | JSON with temperature, humidity and motion |
+| `esp32kit/relay/state` | ESP32 -> HA | `ON` / `OFF` |
+| `esp32kit/relay/command` | HA -> ESP32 | `ON` / `OFF` |
 
-### Exemplu mesaj `esp32kit/state`
+Example `esp32kit/state` message:
 
 ```json
 {
@@ -327,18 +326,19 @@ offline. Jurnalul este recreat când ajunge la 64 KB.
 
 ---
 
-## Firmware ESPHome alternativ
+## Alternative ESPHome firmware
 
-Directorul `esphome/` conține un firmware ESPHome separat pentru aceleași componente:
-DHT11, PIR, releu activ LOW, OLED SSD1306 și LED heartbeat. Integrarea cu Home
-Assistant se face implicit prin ESPHome Native API, fără broker MQTT.
+The `esphome/` directory contains separate ESPHome firmware for the same
+components: DHT11, PIR, active-LOW relay, SSD1306 OLED and heartbeat LED. Home
+Assistant integration uses the ESPHome Native API by default, without an MQTT
+broker.
 
-> Instalarea ESPHome înlocuiește firmware-ul PlatformIO existent pe placă. Cele două
-> variante rămân disponibile în proiect, dar nu pot rula simultan pe același ESP32.
+> Installing ESPHome replaces the PlatformIO firmware on the board. Both
+> variants remain in the project, but they cannot run simultaneously.
 
-Profile disponibile:
+Available profiles:
 
-| Profil script | Placă |
+| Script profile | Board |
 |---|---|
 | `wroom` | ESP32-WROOM-32 / ESP32 Dev Module |
 | `c3` | ESP32-C3-DevKitM-1 |
@@ -347,121 +347,148 @@ Profile disponibile:
 | `c6-supermini` | ESP32-C6 Super Mini |
 | `s3` | ESP32-S3-DevKitC-1 |
 
-Procedura completă ESPHome pentru C6 Super Mini este inclusă în
-[ghidul client](Ghid_Configurare_Client.html#esphome-c6).
+The complete ESPHome procedure for C6 Super Mini is also available in the
+[client guide](Client_Configuration_Guide.html#esphome-c6).
 
-Setup inițial:
+Initial setup on Linux/macOS:
 
 ```bash
 cd esphome
 ./setup.sh init
 ```
 
-Pe Windows, deschide PowerShell în directorul `esphome` și rulează:
+Initial setup on Windows PowerShell:
 
 ```powershell
+cd esphome
 .\setup.ps1 init
 ```
 
-Din Command Prompt poate fi folosit direct `setup.cmd init`. Este necesar Python
-3.11 sau mai nou; scriptul creează automat mediul virtual și instalează
-dependențele.
+From Command Prompt, run `setup.cmd init`. Python 3.11 or newer is required.
+The scripts create the virtual environment and install all dependencies.
 
-Scriptul detectează automat Python 3.11 sau mai nou, creează mediul local
-`esphome/.venv`, instalează versiunea ESPHome din `requirements.txt` și generează
-parola access point-ului și cheile API/OTA în `secrets.yaml`. Nu sunt solicitate
-și nu sunt incluse credențiale pentru o rețea WiFi externă. Fișierul cu secrete
-este exclus din Git. Build-urile sunt păstrate în
-`~/.cache/esp32-ha-kit-esphome`, deoarece ESP-IDF nu acceptă spații în calea
-directorului de compilare.
+The setup detects a compatible Python installation, creates `esphome/.venv`,
+installs the ESPHome version pinned in `requirements.txt`, and generates the
+access point password and API/OTA credentials in `secrets.yaml`. Router Wi-Fi
+credentials are not requested or embedded. The secrets file is excluded from
+Git. Builds are stored outside the project because ESP-IDF does not support
+spaces in the build directory path.
 
-La prima pornire, firmware-ul ESPHome pornește numai în mod access point, cu
-SSID-ul egal cu numele profilului, de exemplu `HA Kit C6 Super Mini`. După
-conectarea la această rețea, deschide `http://192.168.4.1`, selectează rețeaua
-WiFi a casei și introdu parola. ESPHome salvează credențialele în flash și se
-conectează la router; access point-ul rămâne disponibil ca fallback dacă
-legătura nu mai poate fi stabilită.
+On first boot, the ESPHome firmware starts in access point mode. Its SSID matches
+the friendly profile name, for example `HA Kit C6 Super Mini`. Connect to it,
+open `http://192.168.4.1`, select the customer's 2.4 GHz Wi-Fi network and enter
+its password. ESPHome stores these credentials in flash and joins the router.
+The access point remains available as a fallback when the connection fails.
 
-După conectarea la router, Native API, OTA și pagina web devin accesibile la
-`http://<device_name>.local` sau la adresa IP atribuită prin DHCP. Firmware-ul
-YAML nu conține credențialele rețelei casei.
+After joining the router, the Native API, OTA service and web page are available
+at `http://<device_name>.local` or at the DHCP address. The YAML firmware does
+not contain the customer's router credentials.
 
-Pentru configurarea completă AP-only a unei plăci ESP32-WROOM există scriptul
-dedicat:
+### ESP32-C6 Super Mini with ESPHome
+
+Default pins:
+
+| Function | GPIO |
+|---|---:|
+| DHT11 | 0 |
+| PIR | 1 |
+| Active-LOW relay | 2 |
+| External heartbeat LED | 3 |
+| OLED SDA | 20 |
+| OLED SCL | 19 |
+
+Linux installation:
+
+```bash
+cd esphome
+./setup.sh check c6-supermini
+./setup.sh run c6-supermini /dev/ttyACM0
+```
+
+Windows installation:
+
+```powershell
+cd esphome
+.\setup.ps1 check c6-supermini
+.\setup.ps1 run c6-supermini COM5
+```
+
+After provisioning Wi-Fi, add the device in Home Assistant from **Settings ->
+Devices & services -> Add integration -> ESPHome**. Use
+`esp32-ha-kit-c6-supermini.local` or its IP address, then enter the
+`api_encryption_key` value from `secrets.yaml`.
+
+The local web page uses `web_username` and `web_password`. OTA updates use
+`ota_password`. These values are compiled into the firmware and cannot be
+changed through the standard captive portal. To give the customer exclusive
+control, they must adopt or rebuild the board in their own ESPHome Device
+Builder with their own credentials.
+
+### Complete WROOM AP-only provisioning
+
+Linux:
 
 ```bash
 cd esphome
 ./setup-wroom-ap.sh /dev/ttyUSB0
 ```
 
-Echivalentul Windows este:
+Windows PowerShell:
 
 ```powershell
 .\setup-wroom-ap.ps1 COM3
 ```
 
-Din Command Prompt:
+Windows Command Prompt:
 
 ```bat
 setup-wroom-ap.cmd COM3
 ```
 
-Portul poate fi omis dacă este detectat un singur adaptor USB-serial. Când sunt
-mai multe porturi COM, scriptul solicită alegerea explicită pentru a evita
-programarea altei plăci.
+The port can be omitted when a single USB serial adapter is detected. When
+multiple ports are available, specify the correct one to prevent flashing a
+different board.
 
-Scriptul creează mediul ESPHome, generează `secrets.yaml`, validează, compilează
-și programează profilul WROOM. După upload, conectează-te la
-`ESP32 HA Kit WROOM` și configurează routerul din `http://192.168.4.1`. Dacă
-există o singură placă `/dev/ttyUSB*`, portul poate fi omis. Scriptul generează
-implicit parole și chei noi la fiecare rulare, astfel încât două plăci livrate
-unor clienți diferiți să nu aibă aceleași credențiale. Opțiunea
-`--reuse-secrets` pe Linux sau `-ReuseSecrets` pe Windows se folosește numai
-când se repetă programarea aceleiași plăci.
+The WROOM script generates new credentials by default for every board. Use
+`--reuse-secrets` on Linux or `-ReuseSecrets` on Windows only when retrying the
+same board.
 
-La final este generat
-`esphome/generated/esp32-ha-kit-wroom-setup.pdf`. Documentul conține ID-ul unic
-al configurării, un QR
-WiFi pentru conectarea la access point, un QR către
-`http://esp32-ha-kit-wroom.local/`, cheia API, parola OTA și datele de
-autentificare tipărite. PDF-ul conține secrete, are permisiuni `600`, este exclus
-din Git și trebuie predat numai proprietarului plăcii. Permisiunea `600` este
-aplicată pe sistemele care implementează permisiuni POSIX.
+It also generates:
 
-Portalul captiv ESPHome permite clientului să introducă singur SSID-ul și parola
-rețelei sale; aceste date nu sunt cunoscute producătorului. Cheia API, parola OTA
-și autentificarea `web_server` sunt însă valori incluse la compilare și nu pot fi
-schimbate din portalul captiv standard. Pentru ca producătorul să nu mai cunoască
-niciuna dintre credențialele finale, clientul trebuie să adopte sau să
-recompileze dispozitivul în propriul ESPHome Device Builder. După instalarea
-firmware-ului clientului, credențialele inițiale din PDF nu mai trebuie
-considerate valide.
+```text
+esphome/generated/esp32-ha-kit-wroom-setup.pdf
+```
 
-ESPHome folosește HTTP Basic Auth pentru pagina web. Parametrii
-`?username=...&password=...` nu autentifică cererea. Forma
-`http://username:password@host/` nu este folosită deoarece expune parola în URL
-și nu funcționează consecvent în browserele moderne.
+The PDF contains the provisioning ID, Wi-Fi access point QR code, web page QR
+code, API key, OTA password and web credentials. It contains secrets, is
+excluded from Git and must only be given to the board owner. POSIX systems apply
+file mode `600`.
 
-Comenzi uzuale:
+The ESPHome captive portal configures Wi-Fi only. API encryption, OTA and web
+authentication are compile-time settings. URL query parameters such as
+`?username=...&password=...` do not authenticate ESPHome HTTP Basic Auth, and
+embedded URL credentials are intentionally not used.
+
+Common commands:
 
 ```bash
-# Validează toate profilele
+# Validate all profiles
 ./setup.sh check all
 
-# Compilează un profil
+# Compile a profile
 ./setup.sh compile wroom
 
-# Prima instalare prin USB
+# Initial USB installation
 ./setup.sh run wroom /dev/ttyUSB0
 ./setup.sh run c6-supermini /dev/ttyACM0
 ./setup.sh run s3 /dev/ttyACM0
 
-# Update OTA și loguri după prima instalare
+# OTA update and logs
 ./setup.sh upload c3 esp32-ha-kit-c3.local
 ./setup.sh logs c3 esp32-ha-kit-c3.local
 ```
 
-Comenzile PowerShell au aceeași structură:
+PowerShell uses the same command structure:
 
 ```powershell
 .\setup.ps1 check all
@@ -471,125 +498,127 @@ Comenzile PowerShell au aceeași structură:
 .\setup.ps1 logs c3 esp32-ha-kit-c3.local
 ```
 
-Lista completă de comenzi este disponibilă cu `./setup.sh --help` pe
-Linux/macOS sau `.\setup.ps1 help` pe Windows.
+Run `./setup.sh --help` on Linux/macOS or `.\setup.ps1 help` on Windows for the
+complete command list.
 
 ---
 
-## Structura proiectului
+## Project structure
 
-```
+```text
 ESP32 MQTT Home Assistant DIY Kit/
-├── src/
-│   ├── main.cpp                 # Logica principală: senzori, MQTT, FreeRTOS, OLED
-│   └── HardwareConfig.cpp       # Profiluri GPIO, validare și persistență NVS
-├── include/
-│   ├── WebPages.h               # Dashboard HTML embedded
-│   └── HardwareConfig.h         # Modelul configurației hardware
-├── scripts/
-│   └── select_esp_usb_port.py   # Selectează porturile USB pentru C3/C6/T-ZIGBEE/S3
-├── esphome/
-│   ├── common.yaml              # Componente și integrare Home Assistant comune
-│   ├── esp32-ha-kit-*.yaml      # Profile WROOM, C3, T-ZIGBEE, C6, C6 Super Mini și S3
-│   ├── secrets.example.yaml     # Model pentru credențiale și chei
-│   ├── requirements.txt         # Versiunea ESPHome utilizată
-│   ├── setup.sh                 # Setup, validare, build, upload și loguri
-│   ├── setup-wroom-ap.sh        # Instalare completă WROOM în mod AP-only
-│   ├── setup.ps1 / setup.cmd    # Echivalent Windows pentru setup.sh
-│   ├── setup-wroom-ap.ps1/.cmd  # Instalare completă WROOM pe Windows
-│   └── generate-wroom-setup-pdf.py # Fisa PDF cu QR-uri si credentiale
-├── lib/
-│   └── WiFiWebManager/          # Biblioteca custom: WiFi AP/STA + WebServer
-│       ├── WiFiWebManager.h
-│       └── WiFiWebManager.cpp
-├── platformio.ini               # Configurare build PlatformIO
-├── README_EN.md                 # Documentația completă în limba engleză
-├── Ghid_Configurare_Client.html # Ghid client în română (printabil)
-├── Client_Configuration_Guide.html # Client guide in English (printable)
-├── Ghid_Configurare_Client.pdf  # Ghid PDF generat
-├── Client_Configuration_Guide.pdf # English client guide PDF
-└── generate_pdf_advanced.sh     # Script generare PDF din HTML
+|-- src/
+|   |-- main.cpp
+|   |-- HardwareConfig.cpp
+|   |-- SerialLog.cpp
+|   `-- zigbee_main.cpp
+|-- include/
+|   |-- WebPages.h
+|   |-- HardwareConfig.h
+|   `-- SerialLog.h
+|-- scripts/
+|   `-- select_esp_usb_port.py
+|-- esphome/
+|   |-- common.yaml
+|   |-- esp32-ha-kit-*.yaml
+|   |-- secrets.example.yaml
+|   |-- requirements.txt
+|   |-- setup.sh
+|   |-- setup-wroom-ap.sh
+|   |-- setup.ps1 / setup.cmd
+|   |-- setup-wroom-ap.ps1 / setup-wroom-ap.cmd
+|   `-- generate-wroom-setup-pdf.py
+|-- lib/
+|   `-- WiFiWebManager/
+|-- platformio.ini
+|-- README_EN.md
+|-- Ghid_Configurare_Client.html
+|-- Client_Configuration_Guide.html
+|-- Ghid_Configurare_Client.pdf
+|-- Client_Configuration_Guide.pdf
+`-- generate_pdf_advanced.sh
 ```
 
 ---
 
-## Build și upload
+## Build and upload
 
-### Cerințe
+### Requirements
 
-- **VS Code** cu extensia **PlatformIO IDE**
-- **Python 3.12** (inclus în PlatformIO venv)
-- Driver **CH340** instalat (pentru Windows)
-- Port serial: `/dev/ttyUSB0` (Linux) sau `COMx` (Windows)
+- **VS Code** with the **PlatformIO IDE** extension
+- **Python 3.12** from the PlatformIO environment
+- **CH340** driver when required on Windows
+- Serial port such as `/dev/ttyUSB0`, `/dev/ttyACM0` or `COMx`
 
-### Librării (instalate automat de PlatformIO)
+### Libraries installed by PlatformIO
 
-| Librărie | Versiune | Utilizare |
+| Library | Version | Purpose |
 |---|---|---|
-| `knolleary/PubSubClient` | ^2.8 | Client MQTT |
-| `adafruit/DHT sensor library` | ^1.4.6 | Citire DHT11 |
-| `adafruit/Adafruit SSD1306` | ^2.5.9 | Driver OLED |
-| `adafruit/Adafruit GFX Library` | ^1.11.9 | Grafică OLED |
-| `adafruit/Adafruit BusIO` | ^1.16.1 | Comunicație I2C/SPI |
+| `knolleary/PubSubClient` | ^2.8 | MQTT client |
+| `adafruit/DHT sensor library` | ^1.4.6 | DHT11 readings |
+| `adafruit/Adafruit SSD1306` | ^2.5.9 | OLED driver |
+| `adafruit/Adafruit GFX Library` | ^1.11.9 | Graphics |
+| `adafruit/Adafruit BusIO` | ^1.16.1 | I2C/SPI communication |
 
-### Comenzi utile
+Useful commands:
 
 ```bash
-# Build profil implicit (ESP32-WROOM-32)
+# Build the default ESP32-WROOM-32 profile
 pio run
 
-# Build toate profilele
-pio run -e esp32-wroom -e esp32-c3 -e lilygo-t-zigbee -e esp32-c6 -e esp32-c6-supermini -e esp32-s3
+# Build all standard profiles
+pio run -e esp32-wroom -e esp32-c3 -e lilygo-t-zigbee \
+  -e esp32-c6 -e esp32-c6-supermini -e esp32-s3
 
-# Upload profil selectat
+# Upload a selected profile
 pio run -e esp32-c3 -t upload
 
-# Monitor serial (115200 baud)
+# Serial monitor at 115200 baud
 pio device monitor -b 115200
 
-# Generare PDF ghid client
+# Generate the Romanian client PDF
 bash generate_pdf_advanced.sh Ghid_Configurare_Client.html -o Ghid_Configurare_Client.pdf
 
-# Generare PDF ghid client în engleză
+# Generate the English client PDF
 bash generate_pdf_advanced.sh Client_Configuration_Guide.html -o Client_Configuration_Guide.pdf
 ```
 
 ---
 
-## Depanare
+## Troubleshooting
 
-### Acces fără Serial Monitor
+### Access without Serial Monitor
 
-1. Încearcă `http://esp32-ha-kit.local` de pe un dispozitiv conectat la aceeași rețea.
-2. Dacă placa nu s-a conectat la router, conectează-te la WiFi-ul `ESP32_HAKit`
-   cu parola `12345678`, apoi deschide `http://192.168.4.1`.
-3. În lista DHCP a routerului caută hostname-ul `esp32-ha-kit`.
-4. Pentru ESP32-C3 și ESP32-S3, verifică porturile cu `pio device list`; placa
-   poate apărea ca `/dev/ttyUSB0` printr-un bridge USB-to-UART sau ca
-   `/dev/ttyACM0` prin USB nativ. Profilele C3/S3 preferă
-   `/dev/serial/by-id/*`, iar scriptul verifică tipul cipului înainte de upload.
-5. Pentru USB Serial/JTAG nativ pe ESP32-C3 sunt necesare împreună
-   `ARDUINO_USB_MODE=1` și `ARDUINO_USB_CDC_ON_BOOT=1`. Activarea numai a
-   `ARDUINO_USB_CDC_ON_BOOT` produce eroarea de build `USBSerial was not declared`.
+1. Open `http://esp32-ha-kit.local` from a device on the same network.
+2. If the board has not joined the router, connect to `ESP32_HAKit` with password
+   `12345678`, then open `http://192.168.4.1`.
+3. Find the `esp32-ha-kit` hostname in the router DHCP client list.
+4. For ESP32-C3 and ESP32-S3, inspect ports with `pio device list`. The board
+   can appear as `/dev/ttyUSB0` through a USB-to-UART bridge or `/dev/ttyACM0`
+   through native USB.
+5. Native USB Serial/JTAG on ESP32-C3 requires both `ARDUINO_USB_MODE=1` and
+   `ARDUINO_USB_CDC_ON_BOOT=1`. Enabling only CDC causes the
+   `USBSerial was not declared` build error.
 
-| Problemă | Cauză probabilă | Soluție |
+| Problem | Likely cause | Solution |
 |---|---|---|
-| `DHT11: citire invalida` | Cablaj GPIO4 sau tensiune incorectă | Verifică firul DATA pe GPIO4, VCC = 3.3V |
-| `MQTT rc=-2` | Brokerul MQTT nu este accesibil | Setează IP-ul corect în tab-ul MQTT |
-| OLED nu afișează nimic | Adresă I2C greșită sau cablaj | Verifică SDA=GPIO21, SCL=GPIO22, VCC=3.3V |
-| Mesaje repetate `i2cWrite ESP_ERR_INVALID_STATE` | Magistrala I2C/OLED nu răspunde sau frecvența este schimbată în timpul transferurilor | Firmware-ul fixează I2C la 400 kHz și oprește refresh-ul OLED după primul probe eșuat; verifică și pinii/adresa din tab-ul Hardware |
-| S3 nu are port de upload | Placa nu este enumerată prin USB | Scriptul selectează automat un port existent `/dev/ttyACM*` sau `/dev/ttyUSB*` și refuză `/dev/ttyS*`; folosește un cablu de date, conectare directă fără hub și verifică `pio device list` |
-| PIR detectează mereu mișcare | Sensibilitate prea ridicată | Reglează potențiometrul de sensibilitate al HC-SR501 |
-| Nu apare AP `ESP32_HAKit` | Credențiale WiFi salvate anterior | Apasă reset sau șterge NVS prin tab WiFi → Șterge credențiale |
-| Entitățile nu apar în HA | MQTT Auto-Discovery dezactivat | Activează din HA: Setări → Dispozitive → MQTT → Activează Auto-Discovery |
-| Configurația GPIO este respinsă | Pin inexistent, rezervat, neexpus sau folosit de două funcții | Consultă inventarul din tab-ul Hardware și selectează alt GPIO |
-| C3: `USBSerial was not declared` | CDC activat fără modul USB Serial/JTAG | Păstrează împreună `-DARDUINO_USB_MODE=1` și `-DARDUINO_USB_CDC_ON_BOOT=1` în profilul `esp32-c3` |
-| C6 Super Mini apare ca `/dev/ttyACM0`, dar upload-ul nu pornește | Placa nu a intrat manual în bootloader | Ține BOOT, apasă și eliberează RESET, eliberează BOOT, rulează `pio run -e esp32-c6-supermini -t upload`, apoi apasă RESET după scriere |
-| T-ZIGBEE nu apare ca port serial | USB-C-ul plăcii este conectat direct, DIP-urile sunt greșite sau lipsește T-U2T | Folosește T-U2T și setează DIP 3/4 ON, DIP 1/2/5 OFF, apoi reconectează și apasă RESET |
+| `DHT11: invalid reading` | Incorrect data pin or supply | Check the selected GPIO and use 3.3 V |
+| `MQTT rc=-2` | Broker is not reachable | Enter the correct broker IP in the MQTT tab |
+| OLED remains blank | Incorrect I2C address or wiring | Check SDA, SCL, 3.3 V and address `0x3C` |
+| Repeated `i2cWrite ESP_ERR_INVALID_STATE` | OLED/I2C bus does not respond | Check wiring, pins and address; firmware disables refresh after a failed probe |
+| S3 upload port is missing | Board is not enumerated | Use a data cable, connect without a hub and inspect `pio device list` |
+| PIR always reports motion | Sensitivity is too high | Adjust the HC-SR501 sensitivity potentiometer |
+| `ESP32_HAKit` AP is missing | Wi-Fi credentials are already stored | Check the router or clear credentials from the WiFi tab |
+| Home Assistant entities are missing | MQTT Auto-Discovery is disabled | Enable MQTT discovery in Home Assistant |
+| GPIO configuration is rejected | Pin is invalid, reserved or duplicated | Select a different pin using the hardware inventory |
+| C3: `USBSerial was not declared` | CDC enabled without USB Serial/JTAG mode | Keep both USB build definitions enabled |
+| C6 Super Mini appears as `/dev/ttyACM0` but upload fails | Board is not in download mode | Use the BOOT + RESET sequence, upload, then press RESET |
+| ESPHome C6 is not discovered | mDNS or API key issue | Try the DHCP IP and enter the exact `api_encryption_key` |
+| T-ZIGBEE has no serial port | Missing T-U2T or incorrect DIP switches | Use T-U2T and set DIP 3/4 ON, 1/2/5 OFF |
 
 ---
 
-## Licență
+## License
 
-Proiect dezvoltat de **Automatic House Systems**.  
-Distribuit pentru uz privat și educațional.
+Developed by **Automatic House Systems**.  
+Distributed for private and educational use.
