@@ -41,6 +41,7 @@
 #include <soc/soc_caps.h>
 #include <SerialLog.h>
 #include <BleLedControl.h>
+#include <RadarSensor.h>
 
 #define DHT_TYPE        DHT11
 
@@ -1578,6 +1579,45 @@ void handleData(WebServer& server)
   server.send(200, "application/json", json);
 }
 
+void handleRadarData(WebServer& server)
+{
+  const RadarSnapshot radar = radarSensorSnapshot();
+  String json;
+  json.reserve(420);
+  json = F("{\"supported\":");
+  json += radar.supported ? F("true") : F("false");
+  json += F(",\"connected\":");
+  json += radar.connected ? F("true") : F("false");
+  json += F(",\"presence\":");
+  json += radar.presence ? F("true") : F("false");
+  json += F(",\"moving\":");
+  json += radar.moving ? F("true") : F("false");
+  json += F(",\"stationary\":");
+  json += radar.stationary ? F("true") : F("false");
+  json += F(",\"moving_distance_cm\":");
+  json += radar.movingDistanceCm;
+  json += F(",\"moving_energy\":");
+  json += radar.movingEnergy;
+  json += F(",\"stationary_distance_cm\":");
+  json += radar.stationaryDistanceCm;
+  json += F(",\"stationary_energy\":");
+  json += radar.stationaryEnergy;
+  json += F(",\"detection_distance_cm\":");
+  json += radar.detectionDistanceCm;
+  json += F(",\"age_ms\":");
+  if (radar.ageMs == UINT32_MAX) json += F("null");
+  else json += radar.ageMs;
+  json += F(",\"rx_pin\":");
+  json += radar.rxPin;
+  json += F(",\"tx_pin\":");
+  json += radar.txPin;
+  json += F(",\"baud_rate\":");
+  json += radar.baudRate;
+  json += '}';
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", json);
+}
+
 void handleSerialLog(WebServer& server)
 {
   uint32_t requestedSequence = 0;
@@ -2226,6 +2266,8 @@ void setup()
   // WiFiWebManager
   wifiManager.begin();
 
+  radarSensorBegin();
+
   // Pastreaza dashboard-ul accesibil chiar daca DHCP schimba adresa IP.
   g_mdnsReady = MDNS.begin("esp32-ha-kit");
   if (g_mdnsReady)
@@ -2245,6 +2287,7 @@ void setup()
   wifiManager.on("/api/communication_config", HTTP_GET,  handleCommunicationConfigGet);
   wifiManager.on("/api/communication_config", HTTP_POST, handleCommunicationConfigPost);
   wifiManager.on("/data",                HTTP_GET,  handleData);
+  wifiManager.on("/api/radar",           HTTP_GET,  handleRadarData);
   wifiManager.on("/api/status",          HTTP_GET,  handleApiStatus);
   wifiManager.on("/api/relay",           HTTP_GET,  handleApiRelay);
   wifiManager.on("/api/ble_config",      HTTP_GET,  handleBleConfigGet);
@@ -2296,6 +2339,7 @@ void setup()
 
 void loop()
 {
+  radarSensorPoll();
   wifiManager.handleClient();
   bleLedPoll();
   handleRgbLedBlink();
@@ -2391,6 +2435,13 @@ void loop()
     serialLog.printf("  Miscare PIR: %s | Releu: %s\n",
                      motion ? "DETECTATA" : "Nu",
                      relay  ? "ON" : "OFF");
+    const RadarSnapshot radar = radarSensorSnapshot();
+    if (radar.supported)
+      serialLog.printf("  LD2410C: %s | mobil=%ucm/%u%% | static=%ucm/%u%%\n",
+                       radar.connected ? (radar.presence ? "PREZENTA" : "liber")
+                                       : "deconectat",
+                       radar.movingDistanceCm, radar.movingEnergy,
+                       radar.stationaryDistanceCm, radar.stationaryEnergy);
     serialLog.printf("  WiFi: %s | MQTT: %s\n",
                      wifiManager.isConnected()
                        ? ("STA " + wifiManager.getIPAddress()).c_str()

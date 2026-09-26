@@ -1,0 +1,24 @@
+============================================================
+Boot #1 | reset=Power On (1)
+Chip=ESP32-S3 | profil=ESP32-S3-DevKitC-1-N16R8 | SDK=v5.5.5
+Firmware MD5=c0a025ed75f05be7a6cc9f7b8d6dabc6 | sketch=1541232 bytes | flash=16777216 bytes
+Coredump: indisponibil
+
+============================================================
+Boot #2 | reset=Software Reset (3)
+Chip=ESP32-S3 | profil=ESP32-S3-DevKitC-1-N16R8 | SDK=v5.5.5
+Firmware MD5=c0a025ed75f05be7a6cc9f7b8d6dabc6 | sketch=1541232 bytes | flash=16777216 bytes
+Coredump: indisponibil
+
+============================================================
+Boot #3 | reset=Software Reset (3)
+Chip=ESP32-S3 | profil=ESP32-S3-DevKitC-1-N16R8 | SDK=v5.5.5
+Firmware MD5=c0a025ed75f05be7a6cc9f7b8d6dabc6 | sketch=1541232 bytes | flash=16777216 bytes
+Coredump: indisponibil
+
+============================================================
+Boot #4 | reset=Power On (1)
+Chip=ESP32-S3 | profil=ESP32-S3-DevKitC-1-N16R8 | SDK=v5.5.5
+Firmware MD5=c0a025ed75f05be7a6cc9f7b8d6dabc6 | sketch=1541232 bytes | flash=16777216 bytes
+Coredump: indisponibil
+

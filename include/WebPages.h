@@ -151,12 +151,35 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .board-led{position:absolute;width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 7px #86efac;right:16px;bottom:62px}
 .pinout-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 14px;margin-top:14px;font-size:.78em;color:#475569}
 .legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+/* LD2410C radar */
+.radar-layout{display:grid;grid-template-columns:minmax(300px,1.35fr) minmax(230px,.65fr);gap:18px;align-items:start}
+.radar-panel{padding:18px;border-radius:14px;background:radial-gradient(circle at 50% 55%,#123c49 0,#071b26 52%,#030b12 100%);box-shadow:inset 0 0 30px rgba(45,212,191,.12)}
+.radar-scope{display:block;width:100%;max-width:520px;margin:0 auto;filter:drop-shadow(0 0 8px rgba(45,212,191,.16))}
+.radar-sector{fill:rgba(20,184,166,.09);stroke:rgba(45,212,191,.38);stroke-width:1.5}
+.radar-ring{fill:none;stroke:rgba(94,234,212,.3);stroke-width:1.5;stroke-dasharray:4 5}
+.radar-axis{stroke:rgba(94,234,212,.24);stroke-width:1}
+.radar-sweep{stroke:#5eead4;stroke-width:2;filter:drop-shadow(0 0 6px #2dd4bf);transform-origin:210px 210px;animation:radarSweep 2.7s ease-in-out infinite alternate}
+@keyframes radarSweep{from{transform:rotate(-60deg)}to{transform:rotate(60deg)}}
+.radar-target{stroke:#fff;stroke-width:2;transition:cx .25s,cy .25s,r .25s;filter:drop-shadow(0 0 8px currentColor)}
+.radar-target-moving{fill:#fb7185;color:#fb7185}.radar-target-stationary{fill:#60a5fa;color:#60a5fa}
+.radar-origin{fill:#f8fafc;stroke:#2dd4bf;stroke-width:4}
+.radar-range-label{fill:#99f6e4;font-size:11px;opacity:.78}
+.radar-legend{display:flex;justify-content:center;gap:18px;color:#d1fae5;font-size:.82em;margin-top:8px;flex-wrap:wrap}
+.radar-legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px}
+.radar-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.radar-stat{padding:13px;border-radius:10px;background:#f1f5f9;color:#334155}
+.radar-stat-wide{grid-column:1/-1}.radar-stat-label{font-size:.74em;text-transform:uppercase;color:#64748b;font-weight:700;letter-spacing:.04em}
+.radar-stat-value{font-size:1.35em;font-weight:800;margin-top:4px;color:#0f172a}.radar-stat small{display:block;color:#64748b;margin-top:3px}
+.radar-presence{margin-bottom:12px;padding:14px;border-radius:10px;text-align:center;background:#dcfce7;color:#166534;font-size:1.15em;font-weight:800}
+.radar-presence.active{background:#fee2e2;color:#991b1b;animation:pulse 1.2s infinite}
+.radar-note{margin-top:16px;color:#475569;font-size:.86em;line-height:1.55}
 @media(max-width:700px){
   body{padding:8px}.container{padding:16px}.tabs{overflow-x:auto}.tab-btn{padding:9px 12px;white-space:nowrap}
   .language-control{justify-content:center;margin-top:-10px}
   .pinout-board{grid-template-columns:145px 135px 145px;gap:5px}.board-body{min-height:450px}
   .serial-status{width:100%;margin-left:0}.serial-terminal{height:360px}
   .fs-summary{grid-template-columns:1fr}.fs-table th:first-child,.fs-table td:first-child{word-break:break-all}
+  .radar-layout{grid-template-columns:1fr}.radar-panel{padding:8px}
 }
 </style>
 </head>
@@ -174,6 +197,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 
   <div class="tabs">
     <button class="tab-btn active" onclick="showTab('monitor',this)">&#128202; Dashboard</button>
+    <button class="tab-btn" onclick="showTab('radar',this)">&#128225; Radar LD2410C</button>
     <button class="tab-btn" onclick="showTab('mqtt',this)">&#128268; MQTT</button>
     <button class="tab-btn" onclick="showTab('wifi',this)">&#128225; WiFi</button>
     <button class="tab-btn" id="communicationTabButton" style="display:none"
@@ -290,6 +314,65 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
         <li id="noExternalHardware">Niciun periferic extern detectat sau configurat.</li>
         <li>MQTT publish la fiecare 30s sau la detectie miscare</li>
       </ul>
+    </div>
+  </div>
+
+  <!-- LD2410C RADAR TAB -->
+  <div id="radar-tab" class="tab">
+    <div class="mqtt-bar mqtt-unknown" id="radarConnection">LD2410C: se asteapta date UART...</div>
+    <div class="radar-layout">
+      <div class="radar-panel">
+        <svg class="radar-scope" viewBox="0 0 420 420" role="img"
+             aria-label="Vizualizare distante radar LD2410C">
+          <path class="radar-sector" d="M210 210 L54.1 120 A180 180 0 0 1 365.9 120 Z"></path>
+          <circle class="radar-ring" cx="210" cy="210" r="45"></circle>
+          <circle class="radar-ring" cx="210" cy="210" r="90"></circle>
+          <circle class="radar-ring" cx="210" cy="210" r="135"></circle>
+          <circle class="radar-ring" cx="210" cy="210" r="180"></circle>
+          <line class="radar-axis" x1="210" y1="210" x2="54.1" y2="120"></line>
+          <line class="radar-axis" x1="210" y1="210" x2="365.9" y2="120"></line>
+          <line class="radar-axis" x1="210" y1="210" x2="210" y2="30"></line>
+          <line class="radar-sweep" x1="210" y1="210" x2="210" y2="30"></line>
+          <text class="radar-range-label" x="216" y="168">1.5 m</text>
+          <text class="radar-range-label" x="216" y="123">3.0 m</text>
+          <text class="radar-range-label" x="216" y="78">4.5 m</text>
+          <text class="radar-range-label" x="216" y="34">6.0 m</text>
+          <circle id="radarMovingDot" class="radar-target radar-target-moving" cx="202" cy="210" r="8" style="display:none"></circle>
+          <circle id="radarStationaryDot" class="radar-target radar-target-stationary" cx="218" cy="210" r="8" style="display:none"></circle>
+          <circle class="radar-origin" cx="210" cy="210" r="8"></circle>
+          <text class="radar-range-label" x="226" y="215">LD2410C</text>
+        </svg>
+        <div class="radar-legend">
+          <span><i style="background:#fb7185"></i>Tinta in miscare</span>
+          <span><i style="background:#60a5fa"></i>Tinta stationara</span>
+        </div>
+      </div>
+      <div>
+        <div class="radar-presence" id="radarPresence">Fara prezenta</div>
+        <div class="radar-status-grid">
+          <div class="radar-stat">
+            <div class="radar-stat-label">Distanta miscare</div>
+            <div class="radar-stat-value" id="radarMovingDistance">--</div>
+            <small id="radarMovingEnergy">Energie: --</small>
+          </div>
+          <div class="radar-stat">
+            <div class="radar-stat-label">Distanta stationara</div>
+            <div class="radar-stat-value" id="radarStationaryDistance">--</div>
+            <small id="radarStationaryEnergy">Energie: --</small>
+          </div>
+          <div class="radar-stat radar-stat-wide">
+            <div class="radar-stat-label">Distanta detectata</div>
+            <div class="radar-stat-value" id="radarDetectionDistance">--</div>
+            <small id="radarFrameAge">Ultimul cadru: --</small>
+          </div>
+        </div>
+        <div class="info-box radar-note">
+          <strong>Cablaj UART:</strong> TX radar &rarr; GPIO10, RX radar &rarr; GPIO11,
+          VCC &rarr; 5V si GND comun. UART: 256000 baud.<br>
+          Cercul arata distanta fata de senzor. LD2410C nu transmite unghiul sau pozitia
+          stanga/dreapta; marcajele sunt afisate pe axa centrala.
+        </div>
+      </div>
     </div>
   </div>
 
@@ -684,6 +767,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 <script>
 var currentLanguage = 'ro';
 var originalTextNodes = [];
+var radarTabActive = false;
 
 var englishText = {
   "Bluetooth LE — Control LED":"Bluetooth LE \u2014 LED control",
@@ -700,6 +784,18 @@ var englishText = {
 
   'Limba interfeței':'Interface language',
   'Română':'Romanian',
+  'Radar LD2410C':'LD2410C Radar',
+  'LD2410C: se asteapta date UART...':'LD2410C: waiting for UART data...',
+  'Tinta in miscare':'Moving target',
+  'Tinta stationara':'Stationary target',
+  'Fara prezenta':'No presence',
+  'Distanta miscare':'Moving distance',
+  'Distanta stationara':'Stationary distance',
+  'Distanta detectata':'Detected distance',
+  'Energie: --':'Energy: --',
+  'Ultimul cadru: --':'Last frame: --',
+  'Cablaj UART:':'UART wiring:',
+  'Cercul arata distanta fata de senzor. LD2410C nu transmite unghiul sau pozitia stanga/dreapta; marcajele sunt afisate pe axa centrala.':'The circle shows distance from the sensor. The LD2410C does not report angle or left/right position; markers are displayed on the center axis.',
   'MQTT • Home Assistant • DHT11 • PIR • Releu • OLED':'MQTT • Home Assistant • DHT11 • PIR • Relay • OLED',
   'Info Placa':'Board Info',
   'Fisiere':'Files',
@@ -896,6 +992,8 @@ function showTab(name, btn) {
   if (name === 'communication') loadCommunicationConfig();
   if (name === 'hardware') loadHardwareCfg();
   if (name === 'files') loadSpiffsFiles();
+  radarTabActive = name === 'radar';
+  if (radarTabActive) loadRadarData();
   serialTabActive = name === 'serial';
   if (serialTabActive) loadSerialLog();
 }
@@ -956,6 +1054,82 @@ function updateData() {
 }
 setInterval(updateData, 2000);
 updateData();
+
+// ---- LD2410C radar ----
+function setRadarDot(id, visible, distanceCm, energy, x) {
+  var dot = document.getElementById(id);
+  if (!visible || !distanceCm) {
+    dot.style.display = 'none';
+    return;
+  }
+  var distance = Math.max(0, Math.min(600, Number(distanceCm)));
+  dot.setAttribute('cx', String(x));
+  dot.setAttribute('cy', String(210 - distance / 600 * 180));
+  dot.setAttribute('r', String(7 + Math.min(100, Number(energy)) / 18));
+  dot.style.display = 'block';
+}
+
+function radarDistance(value, active) {
+  return active && Number(value) > 0 ? (Number(value) / 100).toFixed(2) + ' m' : '--';
+}
+
+function renderRadarData(d) {
+  var connection = document.getElementById('radarConnection');
+  if (!d.supported) {
+    connection.className = 'mqtt-bar mqtt-err';
+    connection.textContent = tr('Radarul UART este disponibil in profilul ESP32-S3.',
+                                'UART radar support is available in the ESP32-S3 profile.');
+  } else if (!d.connected) {
+    connection.className = 'mqtt-bar mqtt-err';
+    connection.textContent = tr('LD2410C deconectat — verifica alimentarea si firele TX/RX.',
+                                'LD2410C disconnected — check power and TX/RX wiring.');
+  } else {
+    connection.className = 'mqtt-bar mqtt-ok';
+    connection.textContent = 'LD2410C: UART OK | RX GPIO' + d.rx_pin +
+      ' | TX GPIO' + d.tx_pin + ' | ' + d.baud_rate + ' baud';
+  }
+
+  var presence = document.getElementById('radarPresence');
+  presence.classList.toggle('active', !!d.presence && !!d.connected);
+  presence.textContent = d.connected && d.presence
+    ? tr('PREZENTA DETECTATA', 'PRESENCE DETECTED')
+    : tr('Fara prezenta', 'No presence');
+
+  document.getElementById('radarMovingDistance').textContent =
+    radarDistance(d.moving_distance_cm, d.connected && d.moving);
+  document.getElementById('radarStationaryDistance').textContent =
+    radarDistance(d.stationary_distance_cm, d.connected && d.stationary);
+  document.getElementById('radarDetectionDistance').textContent =
+    radarDistance(d.detection_distance_cm, d.connected && d.presence);
+  document.getElementById('radarMovingEnergy').textContent =
+    tr('Energie: ', 'Energy: ') + (d.connected && d.moving ? d.moving_energy + '%' : '--');
+  document.getElementById('radarStationaryEnergy').textContent =
+    tr('Energie: ', 'Energy: ') + (d.connected && d.stationary ? d.stationary_energy + '%' : '--');
+  document.getElementById('radarFrameAge').textContent = d.age_ms === null
+    ? tr('Niciun cadru UART primit', 'No UART frame received')
+    : tr('Ultimul cadru: ', 'Last frame: ') + d.age_ms + ' ms';
+
+  setRadarDot('radarMovingDot', d.connected && d.moving,
+              d.moving_distance_cm, d.moving_energy, 202);
+  setRadarDot('radarStationaryDot', d.connected && d.stationary,
+              d.stationary_distance_cm, d.stationary_energy, 218);
+}
+
+function loadRadarData() {
+  fetch('/api/radar', {cache:'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(renderRadarData)
+    .catch(function() {
+      var connection = document.getElementById('radarConnection');
+      connection.className = 'mqtt-bar mqtt-unknown';
+      connection.textContent = tr('Eroare la citirea datelor radar.',
+                                  'Failed to read radar data.');
+    });
+}
+
+setInterval(function() {
+  if (radarTabActive) loadRadarData();
+}, 500);
 
 function setRelay(s) {
   fetch('/api/relay?state=' + s)
@@ -1826,6 +2000,8 @@ function translateHardwareText(value) {
     'alimentare coprocesor Zigbee TLSR8258':'TLSR8258 Zigbee coprocessor power',
     'LED albastru onboard':'onboard blue LED',
     'UART intern catre TLSR8258':'internal UART to TLSR8258',
+    'UART RX pentru LD2410C':'UART RX for LD2410C',
+    'UART TX pentru LD2410C':'UART TX for LD2410C',
     'buton USER onboard si pin de boot/strapping':'onboard USER button and boot/strapping pin',
     'buton BOOT onboard si pin de boot/strapping':'onboard BOOT button and boot/strapping pin',
     'intrare digitala':'digital input',
@@ -1860,6 +2036,10 @@ function gpioLabel(pin) {
 
 function selectedPinRoles() {
   var roles = {};
+  if (hardwareData && String(hardwareData.profile || '').indexOf('S3') >= 0) {
+    roles[10] = 'LD2410C RX';
+    roles[11] = 'LD2410C TX';
+  }
   var fields = [
     ['hwDht', 'DHT'], ['hwPir', 'PIR'], ['hwRelay', 'releu'],
     ['hwDigitalInput', 'intrare digitala'],

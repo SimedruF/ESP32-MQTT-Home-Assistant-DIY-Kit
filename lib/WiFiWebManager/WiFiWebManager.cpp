@@ -23,10 +23,13 @@ bool WiFiWebManager::begin() {
         serialLog.println("Open in browser: http://" + WiFi.localIP().toString());
     } else {
         // Start Access Point mode
-        startAccessPoint();
-        _isAPMode = true;
-        serialLog.println("📡 Mode: Access Point");
-        serialLog.println("Open in browser: http://" + WiFi.softAPIP().toString());
+        _isAPMode = startAccessPoint();
+        if (_isAPMode) {
+            serialLog.println("📡 Mode: Access Point");
+            serialLog.println("Open in browser: http://" + WiFi.softAPIP().toString());
+        } else {
+            serialLog.println("❌ Access Point startup failed");
+        }
     }
     
     // Setup default routes for WiFi management
@@ -37,7 +40,7 @@ bool WiFiWebManager::begin() {
     serialLog.println("✅ Web server started!");
     serialLog.println("=======================================\n");
     
-    return true;
+    return isConnected() || _isAPMode;
 }
 
 void WiFiWebManager::handleClient() {
@@ -175,18 +178,48 @@ bool WiFiWebManager::connectToWiFi() {
     }
 }
 
-void WiFiWebManager::startAccessPoint() {
+bool WiFiWebManager::startAccessPoint() {
     serialLog.println("Starting Access Point...");
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(_apSSID.c_str(), _apPassword.c_str());
+
+    // A failed STA connection can leave the radio/interface in a transitional
+    // state. Stop it completely before creating the AP, as recommended by the
+    // Arduino-ESP32 Wi-Fi validation sequence.
+    WiFi.disconnect(true, false);
+    delay(200);
+
+    // softAP() starts AP mode itself. Avoid softAPConfig() here because the
+    // default 192.168.4.1 network is sufficient and is safer with native USB
+    // CDC on ESP32-S3.
+    bool started = WiFi.softAP(_apSSID.c_str(), _apPassword.c_str(), 1, 0, 4);
+    if (!started) {
+        serialLog.println("Access Point creation failed; retrying once...");
+        WiFi.disconnect(true, false);
+        delay(500);
+        started = WiFi.softAP(_apSSID.c_str(), _apPassword.c_str(), 1, 0, 4);
+    }
+
+    // Network events are asynchronous in Arduino-ESP32 3.x. Give the AP
+    // interface time to receive its default address before validating it.
+    for (uint8_t attempt = 0;
+         started && WiFi.softAPIP() == IPAddress(0, 0, 0, 0) && attempt < 10;
+         ++attempt) {
+        delay(100);
+    }
     
     IPAddress IP = WiFi.softAPIP();
-    serialLog.print("Access Point created! SSID: ");
+    const bool ready = started && IP != IPAddress(0, 0, 0, 0);
+    serialLog.print(ready ? "Access Point created! SSID: "
+                          : "Access Point unavailable. Requested SSID: ");
     serialLog.println(_apSSID);
+    serialLog.print("Driver result: ");
+    serialLog.println(started ? "OK" : "FAILED");
     serialLog.print("Password: ");
     serialLog.println(_apPassword);
     serialLog.print("IP Address: ");
     serialLog.println(IP);
+    serialLog.print("AP MAC: ");
+    serialLog.println(WiFi.softAPmacAddress());
+    return ready;
 }
 
 void WiFiWebManager::setupDefaultRoutes() {

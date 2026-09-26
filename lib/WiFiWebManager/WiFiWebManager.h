@@ -123,7 +123,7 @@ private:
     // Internal methods
     void loadCredentials();
     bool connectToWiFi();
-    void startAccessPoint();
+    bool startAccessPoint();
     void setupDefaultRoutes();
     
     // Default route handlers

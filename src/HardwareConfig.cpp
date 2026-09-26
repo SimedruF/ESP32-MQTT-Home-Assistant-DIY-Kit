@@ -48,6 +48,10 @@ String jsonEscape(const String& value)
 
 const char* assignedRole(const HardwareConfig& config, int pin)
 {
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  if (pin == 10) return "LD2410C RX";
+  if (pin == 11) return "LD2410C TX";
+#endif
   if (config.dhtPin == pin) return "DHT";
   if (config.pirPin == pin) return "PIR";
   if (config.relayPin == pin) return "relay";
@@ -176,7 +180,7 @@ bool isReservedPin(int pin)
 #elif defined(BOARD_ESP32_C6_SUPERMINI)
   return pin == 12 || pin == 13 || (pin >= 24 && pin <= 30);
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-  return pin >= 26 && pin <= 34;
+  return pin == 10 || pin == 11 || (pin >= 26 && pin <= 34);
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   return pin == 14 || (pin >= 24 && pin <= 30);
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -204,6 +208,8 @@ const char* pinRestriction(int pin)
   if (pin == 12 || pin == 13) return "rezervat pentru USB Serial/JTAG";
   if (pin >= 24 && pin <= 30) return "rezervat pentru memoria flash";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  if (pin == 10) return "UART RX pentru LD2410C";
+  if (pin == 11) return "UART TX pentru LD2410C";
   if (pin >= 26 && pin <= 32) return "rezervat pentru memoria flash";
   if (pin == 33 || pin == 34) return "neexpus pe ESP32-S3-DevKitC-1";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
