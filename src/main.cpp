@@ -1067,9 +1067,9 @@ void publishDiscovery()
     String cfg = "{\"name\":\"Miscare\","
                  "\"device_class\":\"motion\","
                  "\"state_topic\":\"" + jsonEscape(g_topicState) + "\","
-                 "\"value_template\":\"{{ value_json.motion }}\","
-                 "\"payload_on\":\"true\","
-                 "\"payload_off\":\"false\","
+                 "\"value_template\":\"{{ 'ON' if value_json.motion else 'OFF' }}\","
+                 "\"payload_on\":\"ON\","
+                 "\"payload_off\":\"OFF\","
                  "\"unique_id\":\"esp32kit_motion\","
                  + dev + "}";
     mqttClient.publish(DISC_MOTION, cfg.c_str(), true);
@@ -1108,29 +1108,29 @@ void publishDiscovery()
                  "\"device_class\":\"connectivity\","
                  "\"entity_category\":\"diagnostic\","
                  "\"state_topic\":\"" + stateTopic + "\","
-                 "\"value_template\":\"{{ value_json.radar_connected }}\","
-                 "\"payload_on\":\"true\",\"payload_off\":\"false\","
+                 "\"value_template\":\"{{ 'ON' if value_json.radar_connected else 'OFF' }}\","
+                 "\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
                  "\"unique_id\":\"esp32kit_radar_connected\"," + dev + "}";
     mqttClient.publish(DISC_RADAR_CONNECTED, cfg.c_str(), true);
 
     cfg = "{\"name\":\"Prezenta radar\",\"device_class\":\"occupancy\","
           "\"state_topic\":\"" + stateTopic + "\"," + availability +
-          "\"value_template\":\"{{ value_json.radar_presence }}\","
-          "\"payload_on\":\"true\",\"payload_off\":\"false\","
+          "\"value_template\":\"{{ 'ON' if value_json.radar_presence else 'OFF' }}\","
+          "\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
           "\"unique_id\":\"esp32kit_radar_presence\"," + dev + "}";
     mqttClient.publish(DISC_RADAR_PRESENCE, cfg.c_str(), true);
 
     cfg = "{\"name\":\"Tinta in miscare\",\"device_class\":\"motion\","
           "\"state_topic\":\"" + stateTopic + "\"," + availability +
-          "\"value_template\":\"{{ value_json.radar_moving }}\","
-          "\"payload_on\":\"true\",\"payload_off\":\"false\","
+          "\"value_template\":\"{{ 'ON' if value_json.radar_moving else 'OFF' }}\","
+          "\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
           "\"unique_id\":\"esp32kit_radar_moving\"," + dev + "}";
     mqttClient.publish(DISC_RADAR_MOVING, cfg.c_str(), true);
 
     cfg = "{\"name\":\"Tinta stationara\",\"device_class\":\"occupancy\","
           "\"state_topic\":\"" + stateTopic + "\"," + availability +
-          "\"value_template\":\"{{ value_json.radar_stationary }}\","
-          "\"payload_on\":\"true\",\"payload_off\":\"false\","
+          "\"value_template\":\"{{ 'ON' if value_json.radar_stationary else 'OFF' }}\","
+          "\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
           "\"unique_id\":\"esp32kit_radar_stationary\"," + dev + "}";
     mqttClient.publish(DISC_RADAR_STATIONARY, cfg.c_str(), true);
 
