@@ -59,6 +59,7 @@ int    g_mqttPort     = 1883;
 String g_mqttUser     = "";
 String g_mqttPass     = "";
 String g_mqttClientId = "esp32-ha-kit";
+uint16_t g_mqttMaxAttempts = 0;  // 0 = reconectare nelimitata
 String g_topicState       = "esp32kit/state";
 String g_topicRelayState  = "esp32kit/relay/state";
 String g_topicRelayCommand = "esp32kit/relay/command";
@@ -72,6 +73,24 @@ static const char* DISC_TEMP   = "homeassistant/sensor/esp32kit/temperature/conf
 static const char* DISC_HUM    = "homeassistant/sensor/esp32kit/humidity/config";
 static const char* DISC_MOTION = "homeassistant/binary_sensor/esp32kit/motion/config";
 static const char* DISC_RELAY  = "homeassistant/switch/esp32kit/relay/config";
+static const char* DISC_RADAR_CONNECTED =
+  "homeassistant/binary_sensor/esp32kit/radar_connected/config";
+static const char* DISC_RADAR_PRESENCE =
+  "homeassistant/binary_sensor/esp32kit/radar_presence/config";
+static const char* DISC_RADAR_MOVING =
+  "homeassistant/binary_sensor/esp32kit/radar_moving/config";
+static const char* DISC_RADAR_STATIONARY =
+  "homeassistant/binary_sensor/esp32kit/radar_stationary/config";
+static const char* DISC_RADAR_DISTANCE =
+  "homeassistant/sensor/esp32kit/radar_distance/config";
+static const char* DISC_RADAR_MOVING_DISTANCE =
+  "homeassistant/sensor/esp32kit/radar_moving_distance/config";
+static const char* DISC_RADAR_STATIONARY_DISTANCE =
+  "homeassistant/sensor/esp32kit/radar_stationary_distance/config";
+static const char* DISC_RADAR_MOVING_ENERGY =
+  "homeassistant/sensor/esp32kit/radar_moving_energy/config";
+static const char* DISC_RADAR_STATIONARY_ENERGY =
+  "homeassistant/sensor/esp32kit/radar_stationary_energy/config";
 
 // NVS pentru setarile MQTT
 Preferences mqttPrefs;
@@ -84,6 +103,7 @@ String g_zigbeeCoordinatorHost = "";
 String g_zigbeePairingMode = "auto";
 
 String jsonEscape(const String& value);
+void publishState();
 
 bool isValidMqttTopic(const String& topic)
 {
@@ -291,6 +311,8 @@ void loadMqttConfig()
   g_mqttUser     = readOptionalString(mqttPrefs, "user",     g_mqttUser);
   g_mqttPass     = readOptionalString(mqttPrefs, "pass",     g_mqttPass);
   g_mqttClientId = readOptionalString(mqttPrefs, "client_id",g_mqttClientId);
+  const uint16_t storedMaxAttempts =
+    mqttPrefs.getUShort("max_attempts", g_mqttMaxAttempts);
   const String storedTopicState =
     readOptionalString(mqttPrefs, "topic_state", g_topicState);
   const String storedRelayState =
@@ -331,10 +353,12 @@ void loadMqttConfig()
     g_digitalInputPayloadInactive = storedDigitalInputInactive;
   }
   g_digitalInputRetain = storedDigitalInputRetain;
+  g_mqttMaxAttempts = storedMaxAttempts <= 100 ? storedMaxAttempts : 0;
 
-  serialLog.printf("[MQTT] Config NVS: %s:%d user='%s' client='%s'\n",
+  serialLog.printf("[MQTT] Config NVS: %s:%d user='%s' client='%s' incercari=%u\n",
                    g_mqttBroker.c_str(), g_mqttPort,
-                   g_mqttUser.c_str(), g_mqttClientId.c_str());
+                   g_mqttUser.c_str(), g_mqttClientId.c_str(),
+                   static_cast<unsigned>(g_mqttMaxAttempts));
   serialLog.printf("[MQTT] Topice: state='%s' relay_state='%s' relay_command='%s'\n",
                    g_topicState.c_str(), g_topicRelayState.c_str(),
                    g_topicRelayCommand.c_str());
@@ -348,7 +372,8 @@ bool saveMqttConfig(const String& broker, int port,
                     const String& topicDigitalInput,
                     const String& digitalInputPayloadActive,
                     const String& digitalInputPayloadInactive,
-                    bool digitalInputRetain)
+                    bool digitalInputRetain,
+                    uint16_t maxAttempts)
 {
   if (!mqttPrefs.begin("mqtt", false))
   {
@@ -360,6 +385,7 @@ bool saveMqttConfig(const String& broker, int port,
   mqttPrefs.putString("user",      user);
   mqttPrefs.putString("pass",      pass);
   mqttPrefs.putString("client_id", clientId);
+  mqttPrefs.putUShort("max_attempts", maxAttempts);
   mqttPrefs.putString("topic_state", topicState);
   mqttPrefs.putString("relay_state", topicRelayState);
   mqttPrefs.putString("relay_cmd", topicRelayCommand);
@@ -373,6 +399,7 @@ bool saveMqttConfig(const String& broker, int port,
   g_mqttUser     = user;
   g_mqttPass     = pass;
   g_mqttClientId = clientId;
+  g_mqttMaxAttempts = maxAttempts;
   g_topicState = topicState;
   g_topicRelayState = topicRelayState;
   g_topicRelayCommand = topicRelayCommand;
@@ -446,6 +473,10 @@ static bool g_digitalInputReady = false;
 // Accesat doar din loop() (core 1 - Arduino loop task)
 static bool g_mqttConnected      = false;
 static bool g_discoveryPublished = false;
+static uint16_t g_mqttAttemptCount = 0;
+static bool g_mqttRetryLimitReached = false;
+static unsigned long g_mqttLastAttempt = 0;
+static constexpr unsigned long MQTT_RETRY_INTERVAL_MS = 5000;
 
 // Mutex FreeRTOS pentru date partajate intre task-uri
 // (portENTER_CRITICAL dezactiveaza intreruperile -> provoaca Interrupt WDT)
@@ -1010,7 +1041,7 @@ void publishDiscovery()
                  "\"device_class\":\"temperature\","
                  "\"unit_of_measurement\":\"\xC2\xB0" "C\","
                  "\"state_topic\":\"" + jsonEscape(g_topicState) + "\","
-                 "\"value_template\":\"{{ value_json.temperature | round(1) }}\","
+                 "\"value_template\":\"{{ value_json.temperature | round(1) if value_json.temperature is number else '' }}\","
                  "\"unique_id\":\"esp32kit_temperature\","
                  + dev + "}";
     mqttClient.publish(DISC_TEMP, cfg.c_str(), true);
@@ -1019,7 +1050,7 @@ void publishDiscovery()
           "\"device_class\":\"humidity\","
           "\"unit_of_measurement\":\"%\","
           "\"state_topic\":\"" + jsonEscape(g_topicState) + "\","
-          "\"value_template\":\"{{ value_json.humidity | round(1) }}\","
+          "\"value_template\":\"{{ value_json.humidity | round(1) if value_json.humidity is number else '' }}\","
           "\"unique_id\":\"esp32kit_humidity\","
           + dev + "}";
     mqttClient.publish(DISC_HUM, cfg.c_str(), true);
@@ -1065,14 +1096,115 @@ void publishDiscovery()
     mqttClient.publish(DISC_RELAY, "", true);
   }
 
+  const RadarSnapshot radar = radarSensorSnapshot();
+  if (radar.supported)
+  {
+    const String stateTopic = jsonEscape(g_topicState);
+    const String availability =
+      "\"availability_topic\":\"" + stateTopic + "\","
+      "\"availability_template\":\"{{ 'online' if value_json.radar_connected else 'offline' }}\",";
+
+    String cfg = "{\"name\":\"Radar conectat\","
+                 "\"device_class\":\"connectivity\","
+                 "\"entity_category\":\"diagnostic\","
+                 "\"state_topic\":\"" + stateTopic + "\","
+                 "\"value_template\":\"{{ value_json.radar_connected }}\","
+                 "\"payload_on\":\"true\",\"payload_off\":\"false\","
+                 "\"unique_id\":\"esp32kit_radar_connected\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_CONNECTED, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Prezenta radar\",\"device_class\":\"occupancy\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_presence }}\","
+          "\"payload_on\":\"true\",\"payload_off\":\"false\","
+          "\"unique_id\":\"esp32kit_radar_presence\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_PRESENCE, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Tinta in miscare\",\"device_class\":\"motion\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_moving }}\","
+          "\"payload_on\":\"true\",\"payload_off\":\"false\","
+          "\"unique_id\":\"esp32kit_radar_moving\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_MOVING, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Tinta stationara\",\"device_class\":\"occupancy\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_stationary }}\","
+          "\"payload_on\":\"true\",\"payload_off\":\"false\","
+          "\"unique_id\":\"esp32kit_radar_stationary\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_STATIONARY, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Distanta detectata\",\"device_class\":\"distance\","
+          "\"state_class\":\"measurement\",\"unit_of_measurement\":\"cm\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_detection_distance_cm }}\","
+          "\"unique_id\":\"esp32kit_radar_distance\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_DISTANCE, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Distanta miscare\",\"device_class\":\"distance\","
+          "\"state_class\":\"measurement\",\"unit_of_measurement\":\"cm\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_moving_distance_cm }}\","
+          "\"unique_id\":\"esp32kit_radar_moving_distance\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_MOVING_DISTANCE, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Distanta stationara\",\"device_class\":\"distance\","
+          "\"state_class\":\"measurement\",\"unit_of_measurement\":\"cm\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_stationary_distance_cm }}\","
+          "\"unique_id\":\"esp32kit_radar_stationary_distance\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_STATIONARY_DISTANCE, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Energie miscare\",\"state_class\":\"measurement\","
+          "\"unit_of_measurement\":\"%\",\"icon\":\"mdi:signal\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_moving_energy }}\","
+          "\"unique_id\":\"esp32kit_radar_moving_energy\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_MOVING_ENERGY, cfg.c_str(), true);
+
+    cfg = "{\"name\":\"Energie stationara\",\"state_class\":\"measurement\","
+          "\"unit_of_measurement\":\"%\",\"icon\":\"mdi:signal\","
+          "\"state_topic\":\"" + stateTopic + "\"," + availability +
+          "\"value_template\":\"{{ value_json.radar_stationary_energy }}\","
+          "\"unique_id\":\"esp32kit_radar_stationary_energy\"," + dev + "}";
+    mqttClient.publish(DISC_RADAR_STATIONARY_ENERGY, cfg.c_str(), true);
+  }
+  else
+  {
+    mqttClient.publish(DISC_RADAR_CONNECTED, "", true);
+    mqttClient.publish(DISC_RADAR_PRESENCE, "", true);
+    mqttClient.publish(DISC_RADAR_MOVING, "", true);
+    mqttClient.publish(DISC_RADAR_STATIONARY, "", true);
+    mqttClient.publish(DISC_RADAR_DISTANCE, "", true);
+    mqttClient.publish(DISC_RADAR_MOVING_DISTANCE, "", true);
+    mqttClient.publish(DISC_RADAR_STATIONARY_DISTANCE, "", true);
+    mqttClient.publish(DISC_RADAR_MOVING_ENERGY, "", true);
+    mqttClient.publish(DISC_RADAR_STATIONARY_ENERGY, "", true);
+  }
+
   g_discoveryPublished = true;
   serialLog.println("[MQTT] Home Assistant discovery publicat");
 }
 
 bool mqttReconnect()
 {
+  if (g_mqttMaxAttempts > 0 && g_mqttAttemptCount >= g_mqttMaxAttempts)
+  {
+    g_mqttRetryLimitReached = true;
+    return false;
+  }
+
+  ++g_mqttAttemptCount;
   mqttClient.setServer(g_mqttBroker.c_str(), g_mqttPort);
-  serialLog.printf("[MQTT] Conectare la %s:%d ...\n", g_mqttBroker.c_str(), g_mqttPort);
+  if (g_mqttMaxAttempts == 0)
+    serialLog.printf("[MQTT] Incercarea %u (nelimitat) la %s:%d ...\n",
+                     static_cast<unsigned>(g_mqttAttemptCount),
+                     g_mqttBroker.c_str(), g_mqttPort);
+  else
+    serialLog.printf("[MQTT] Incercarea %u/%u la %s:%d ...\n",
+                     static_cast<unsigned>(g_mqttAttemptCount),
+                     static_cast<unsigned>(g_mqttMaxAttempts),
+                     g_mqttBroker.c_str(), g_mqttPort);
 
   bool ok = (g_mqttUser.length() > 0)
     ? mqttClient.connect(g_mqttClientId.c_str(), g_mqttUser.c_str(), g_mqttPass.c_str())
@@ -1084,12 +1216,20 @@ bool mqttReconnect()
     mqttClient.subscribe(g_topicRelayCommand.c_str());
     g_mqttConnected      = true;
     g_discoveryPublished = false;   // re-publica discovery dupa reconectare
+    g_mqttAttemptCount = 0;
+    g_mqttRetryLimitReached = false;
     publishDigitalInputState();
   }
   else
   {
     serialLog.printf("[MQTT] Esuat (rc=%d) broker=%s:%d\n", mqttClient.state(), g_mqttBroker.c_str(), g_mqttPort);
     g_mqttConnected = false;
+    if (g_mqttMaxAttempts > 0 && g_mqttAttemptCount >= g_mqttMaxAttempts)
+    {
+      g_mqttRetryLimitReached = true;
+      serialLog.printf("[MQTT] Limita de %u incercari a fost atinsa; reconectarea automata este oprita\n",
+                       static_cast<unsigned>(g_mqttMaxAttempts));
+    }
   }
   return ok;
 }
@@ -1100,10 +1240,10 @@ void handleMqtt()
 
   if (!mqttClient.connected())
   {
-    static unsigned long lastAttempt = 0;
-    if (millis() - lastAttempt >= 5000)
+    if (g_mqttRetryLimitReached) return;
+    if (millis() - g_mqttLastAttempt >= MQTT_RETRY_INTERVAL_MS)
     {
-      lastAttempt = millis();
+      g_mqttLastAttempt = millis();
       g_mqttConnected = false;
       mqttReconnect();
     }
@@ -1113,7 +1253,10 @@ void handleMqtt()
   mqttClient.loop();
 
   if (!g_discoveryPublished)
+  {
     publishDiscovery();
+    publishState();
+  }
 }
 
 void publishState()
@@ -1143,6 +1286,25 @@ void publishState()
   json += g_digitalInputReady
     ? (g_digitalInputActive ? "true" : "false")
     : "null";
+  const RadarSnapshot radar = radarSensorSnapshot();
+  json += ",\"radar_connected\":";
+  json += radar.connected ? "true" : "false";
+  json += ",\"radar_presence\":";
+  json += radar.connected && radar.presence ? "true" : "false";
+  json += ",\"radar_moving\":";
+  json += radar.connected && radar.moving ? "true" : "false";
+  json += ",\"radar_stationary\":";
+  json += radar.connected && radar.stationary ? "true" : "false";
+  json += ",\"radar_detection_distance_cm\":";
+  json += radar.connected ? String(radar.detectionDistanceCm) : "null";
+  json += ",\"radar_moving_distance_cm\":";
+  json += radar.connected ? String(radar.movingDistanceCm) : "null";
+  json += ",\"radar_stationary_distance_cm\":";
+  json += radar.connected ? String(radar.stationaryDistanceCm) : "null";
+  json += ",\"radar_moving_energy\":";
+  json += radar.connected ? String(radar.movingEnergy) : "null";
+  json += ",\"radar_stationary_energy\":";
+  json += radar.connected ? String(radar.stationaryEnergy) : "null";
   json += ",\"uptime\":";
   json += String(millis() / 1000);
   json += "}";
@@ -1572,6 +1734,12 @@ void handleData(WebServer& server)
     : "null";
   json += ",\"mqtt_connected\":";
   json += g_mqttConnected ? "true" : "false";
+  json += ",\"mqtt_attempt_count\":";
+  json += g_mqttAttemptCount;
+  json += ",\"mqtt_max_attempts\":";
+  json += g_mqttMaxAttempts;
+  json += ",\"mqtt_retry_limit_reached\":";
+  json += g_mqttRetryLimitReached ? "true" : "false";
   json += ",\"uptime_ms\":";
   json += String(millis());
   json += "}";
@@ -1582,14 +1750,28 @@ void handleData(WebServer& server)
 void handleRadarData(WebServer& server)
 {
   const RadarSnapshot radar = radarSensorSnapshot();
+  const bool outAvailable = g_hardware.pirPin != PIN_DISABLED;
+  bool outActive = false;
+  if (outAvailable)
+  {
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    outActive = g_motionDetected;
+    xSemaphoreGive(g_mutex);
+  }
   String json;
-  json.reserve(420);
+  json.reserve(480);
   json = F("{\"supported\":");
   json += radar.supported ? F("true") : F("false");
   json += F(",\"connected\":");
   json += radar.connected ? F("true") : F("false");
   json += F(",\"presence\":");
   json += radar.presence ? F("true") : F("false");
+  json += F(",\"out_available\":");
+  json += outAvailable ? F("true") : F("false");
+  json += F(",\"out_active\":");
+  json += outActive ? F("true") : F("false");
+  json += F(",\"out_pin\":");
+  json += String(outAvailable ? g_hardware.pirPin : PIN_DISABLED);
   json += F(",\"moving\":");
   json += radar.moving ? F("true") : F("false");
   json += F(",\"stationary\":");
@@ -1608,11 +1790,18 @@ void handleRadarData(WebServer& server)
   if (radar.ageMs == UINT32_MAX) json += F("null");
   else json += radar.ageMs;
   json += F(",\"rx_pin\":");
-  json += radar.rxPin;
+  json += String(radar.rxPin);
   json += F(",\"tx_pin\":");
-  json += radar.txPin;
+  json += String(radar.txPin);
   json += F(",\"baud_rate\":");
   json += radar.baudRate;
+  json += F(",\"received_bytes\":");
+  json += radar.receivedBytes;
+  json += F(",\"last_byte_age_ms\":");
+  if (radar.lastByteAgeMs == UINT32_MAX) json += F("null");
+  else json += radar.lastByteAgeMs;
+  json += F(",\"baud_scanning\":");
+  json += radar.baudScanning ? F("true") : F("false");
   json += '}';
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
@@ -1805,6 +1994,10 @@ void handleMqttConfigGet(WebServer& server)
   json += "\"port\":"      + String(g_mqttPort) + ",";
   json += "\"user\":\""   + jsonEscape(g_mqttUser) + "\",";
   json += "\"client_id\":\"" + jsonEscape(g_mqttClientId) + "\",";
+  json += "\"max_attempts\":" + String(g_mqttMaxAttempts) + ",";
+  json += "\"attempt_count\":" + String(g_mqttAttemptCount) + ",";
+  json += "\"retry_limit_reached\":" +
+          String(g_mqttRetryLimitReached ? "true" : "false") + ",";
   json += "\"topic_state\":\"" + jsonEscape(g_topicState) + "\",";
   json += "\"topic_relay_state\":\"" + jsonEscape(g_topicRelayState) + "\",";
   json += "\"topic_relay_command\":\"" + jsonEscape(g_topicRelayCommand) + "\",";
@@ -1836,6 +2029,8 @@ void handleMqttConfigPost(WebServer& server)
   String pass = server.hasArg("pass") && server.arg("pass").length()
     ? server.arg("pass") : g_mqttPass;
   String clientId = server.hasArg("client_id") ? server.arg("client_id") : "esp32-ha-kit";
+  const String maxAttemptsArg = server.hasArg("max_attempts")
+    ? server.arg("max_attempts") : String(g_mqttMaxAttempts);
   String topicState = server.hasArg("topic_state")
     ? server.arg("topic_state") : g_topicState;
   String topicRelayState = server.hasArg("topic_relay_state")
@@ -1869,6 +2064,24 @@ void handleMqttConfigPost(WebServer& server)
   // Validare port
   if (port <= 0 || port > 65535) port = 1883;
 
+  for (size_t i = 0; i < maxAttemptsArg.length(); ++i)
+  {
+    if (!isDigit(maxAttemptsArg[i]))
+    {
+      server.send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"numarul de incercari trebuie sa fie intre 0 si 100\"}");
+      return;
+    }
+  }
+  const int maxAttemptsValue = maxAttemptsArg.toInt();
+  if (maxAttemptsArg.length() == 0 || maxAttemptsValue < 0 || maxAttemptsValue > 100)
+  {
+    server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"numarul de incercari trebuie sa fie intre 0 si 100\"}");
+    return;
+  }
+  const uint16_t maxAttempts = static_cast<uint16_t>(maxAttemptsValue);
+
   if (!isValidMqttTopic(topicState) ||
       !isValidMqttTopic(topicRelayState) ||
       !isValidMqttTopic(topicRelayCommand) ||
@@ -1901,7 +2114,7 @@ void handleMqttConfigPost(WebServer& server)
   if (!saveMqttConfig(broker, port, user, pass, clientId, topicState,
                       topicRelayState, topicRelayCommand, topicDigitalInput,
                       digitalInputPayloadActive, digitalInputPayloadInactive,
-                      digitalInputRetain))
+                      digitalInputRetain, maxAttempts))
   {
     server.send(500, "application/json",
                 "{\"ok\":false,\"error\":\"salvarea configuratiei in NVS a esuat\"}");
@@ -1912,6 +2125,9 @@ void handleMqttConfigPost(WebServer& server)
   if (mqttClient.connected()) mqttClient.disconnect();
   g_mqttConnected      = false;
   g_discoveryPublished = false;
+  g_mqttAttemptCount = 0;
+  g_mqttRetryLimitReached = false;
+  g_mqttLastAttempt = millis() - MQTT_RETRY_INTERVAL_MS;
 
   server.send(200, "application/json", "{\"ok\":true,\"message\":\"Salvat! ESP32 se reconecteaza la broker.\"}");
 }
@@ -2393,6 +2609,32 @@ void loop()
   if (currentMotion != lastMotion)
   {
     lastMotion = currentMotion;
+    publishState();
+  }
+
+  // Radar: stare imediata si actualizare periodica a distantelor in HA.
+  static bool radarStateInitialized = false;
+  static bool lastRadarConnected = false;
+  static bool lastRadarPresence = false;
+  static bool lastRadarMoving = false;
+  static bool lastRadarStationary = false;
+  static unsigned long lastRadarPublish = 0;
+  const RadarSnapshot radar = radarSensorSnapshot();
+  const bool radarStateChanged = !radarStateInitialized ||
+    radar.connected != lastRadarConnected ||
+    radar.presence != lastRadarPresence ||
+    radar.moving != lastRadarMoving ||
+    radar.stationary != lastRadarStationary;
+  if (mqttClient.connected() && radar.supported &&
+      (radarStateChanged ||
+       (radar.connected && millis() - lastRadarPublish >= 1000)))
+  {
+    radarStateInitialized = true;
+    lastRadarConnected = radar.connected;
+    lastRadarPresence = radar.presence;
+    lastRadarMoving = radar.moving;
+    lastRadarStationary = radar.stationary;
+    lastRadarPublish = millis();
     publishState();
   }
 

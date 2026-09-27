@@ -18,6 +18,9 @@ struct RadarSnapshot {
   int8_t rxPin;
   int8_t txPin;
   uint32_t baudRate;
+  uint32_t receivedBytes;
+  uint32_t lastByteAgeMs;
+  bool baudScanning;
 };
 
 void radarSensorBegin();

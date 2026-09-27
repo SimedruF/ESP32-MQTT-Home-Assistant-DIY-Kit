@@ -49,8 +49,8 @@ String jsonEscape(const String& value)
 const char* assignedRole(const HardwareConfig& config, int pin)
 {
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
-  if (pin == 10) return "LD2410C RX";
-  if (pin == 11) return "LD2410C TX";
+  if (pin == 18) return "LD2410C RX";
+  if (pin == 17) return "LD2410C TX";
 #endif
   if (config.dhtPin == pin) return "DHT";
   if (config.pirPin == pin) return "PIR";
@@ -93,7 +93,7 @@ HardwareConfig HardwareConfigStore::defaults() const
   return {0, 1, 2, PIN_DISABLED, 3, 20, 19, true, true,
           DIGITAL_INPUT_PULLUP, 0x3C};
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-  return {4, 5, 7, PIN_DISABLED, 18, 8, 9, true, true,
+  return {4, 5, 7, PIN_DISABLED, 15, 8, 9, true, true,
           DIGITAL_INPUT_PULLUP, 0x3C};
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   return {2, 3, 7, PIN_DISABLED, 18, 6, 10, true, true,
@@ -129,6 +129,18 @@ HardwareConfig HardwareConfigStore::load()
   config.digitalInputMode =
     _preferences.getUChar("din_mode", config.digitalInputMode);
   config.oledAddress = _preferences.getUChar("oled_addr", config.oledAddress);
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  if (config.heartbeatPin == 18)
+  {
+    const bool gpio15InUse = config.dhtPin == 15 || config.pirPin == 15 ||
+      config.relayPin == 15 || config.digitalInputPin == 15 ||
+      config.sdaPin == 15 || config.sclPin == 15;
+    config.heartbeatPin = gpio15InUse ? PIN_DISABLED : 15;
+    _preferences.putChar("heart", config.heartbeatPin);
+    serialLog.printf("[HW] GPIO18 rezervat pentru LD2410C; heartbeat mutat la %s\n",
+                     config.heartbeatPin == PIN_DISABLED ? "dezactivat" : "GPIO15");
+  }
+#endif
   _preferences.end();
 
   String error;
@@ -180,7 +192,7 @@ bool isReservedPin(int pin)
 #elif defined(BOARD_ESP32_C6_SUPERMINI)
   return pin == 12 || pin == 13 || (pin >= 24 && pin <= 30);
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-  return pin == 10 || pin == 11 || (pin >= 26 && pin <= 34);
+  return pin == 17 || pin == 18 || (pin >= 26 && pin <= 34);
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   return pin == 14 || (pin >= 24 && pin <= 30);
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -208,8 +220,8 @@ const char* pinRestriction(int pin)
   if (pin == 12 || pin == 13) return "rezervat pentru USB Serial/JTAG";
   if (pin >= 24 && pin <= 30) return "rezervat pentru memoria flash";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-  if (pin == 10) return "UART RX pentru LD2410C";
-  if (pin == 11) return "UART TX pentru LD2410C";
+  if (pin == 18) return "UART RX pentru LD2410C";
+  if (pin == 17) return "UART TX pentru LD2410C";
   if (pin >= 26 && pin <= 32) return "rezervat pentru memoria flash";
   if (pin == 33 || pin == 34) return "neexpus pe ESP32-S3-DevKitC-1";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)

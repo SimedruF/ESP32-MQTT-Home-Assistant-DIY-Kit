@@ -19,16 +19,16 @@ bool WiFiWebManager::begin() {
     // Try to connect to WiFi if configured
     if (_wifiConfigured && connectToWiFi()) {
         _isAPMode = false;
-        serialLog.println("✅ Mode: WiFi Client");
+        serialLog.println(" Mode: WiFi Client");
         serialLog.println("Open in browser: http://" + WiFi.localIP().toString());
     } else {
         // Start Access Point mode
         _isAPMode = startAccessPoint();
         if (_isAPMode) {
-            serialLog.println("📡 Mode: Access Point");
+            serialLog.println(" Mode: Access Point");
             serialLog.println("Open in browser: http://" + WiFi.softAPIP().toString());
         } else {
-            serialLog.println("❌ Access Point startup failed");
+            serialLog.println(" Mode: Access Point startup failed");
         }
     }
     
@@ -37,7 +37,7 @@ bool WiFiWebManager::begin() {
     
     // Start web server
     _server->begin();
-    serialLog.println("✅ Web server started!");
+    serialLog.println(" Web server started!");
     serialLog.println("=======================================\n");
     
     return isConnected() || _isAPMode;

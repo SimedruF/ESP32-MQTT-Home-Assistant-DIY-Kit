@@ -172,6 +172,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
 .radar-stat-value{font-size:1.35em;font-weight:800;margin-top:4px;color:#0f172a}.radar-stat small{display:block;color:#64748b;margin-top:3px}
 .radar-presence{margin-bottom:12px;padding:14px;border-radius:10px;text-align:center;background:#dcfce7;color:#166534;font-size:1.15em;font-weight:800}
 .radar-presence.active{background:#fee2e2;color:#991b1b;animation:pulse 1.2s infinite}
+.radar-presence.unavailable{background:#e2e8f0;color:#475569;animation:none}
 .radar-note{margin-top:16px;color:#475569;font-size:.86em;line-height:1.55}
 @media(max-width:700px){
   body{padding:8px}.container{padding:16px}.tabs{overflow-x:auto}.tab-btn{padding:9px 12px;white-space:nowrap}
@@ -348,7 +349,7 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
         </div>
       </div>
       <div>
-        <div class="radar-presence" id="radarPresence">Fara prezenta</div>
+        <div class="radar-presence unavailable" id="radarPresence">OUT: se asteapta date...</div>
         <div class="radar-status-grid">
           <div class="radar-stat">
             <div class="radar-stat-label">Distanta miscare</div>
@@ -364,11 +365,13 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
             <div class="radar-stat-label">Distanta detectata</div>
             <div class="radar-stat-value" id="radarDetectionDistance">--</div>
             <small id="radarFrameAge">Ultimul cadru: --</small>
+            <small id="radarUartDiagnostics">UART brut: --</small>
           </div>
         </div>
         <div class="info-box radar-note">
-          <strong>Cablaj UART:</strong> TX radar &rarr; GPIO10, RX radar &rarr; GPIO11,
-          VCC &rarr; 5V si GND comun. UART: 256000 baud.<br>
+          <strong>Cablaj UART:</strong> TX radar &rarr; GPIO18, RX radar &rarr; GPIO17,
+          OUT radar &rarr; <span id="radarOutPin">GPIO5</span>, VCC &rarr; 5V si GND comun.
+          UART: 256000 baud. Driver: MyLD2410 1.2.8.<br>
           Cercul arata distanta fata de senzor. LD2410C nu transmite unghiul sau pozitia
           stanga/dreapta; marcajele sunt afisate pe axa centrala.
         </div>
@@ -397,6 +400,13 @@ h1{text-align:center;color:#1e40af;font-size:2em;margin-bottom:4px}
     <div class="form-group">
       <label class="form-label">Client ID</label>
       <input type="text" id="mqttClientId" class="form-input" placeholder="esp32-ha-kit">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Numar maxim de incercari consecutive</label>
+      <input type="number" id="mqttMaxAttempts" class="form-input" value="0" min="0" max="100">
+      <small style="color:#64748b;font-size:.82em">
+        0 = nelimitat. Dupa atingerea limitei, reconectarea se reia la repornire sau dupa salvarea configuratiei.
+      </small>
     </div>
     <div class="form-group">
       <label class="form-label">Utilizator <span style="color:#94a3b8">(optional)</span></label>
@@ -848,6 +858,8 @@ var englishText = {
   'Verificare status MQTT...':'Checking MQTT status...',
   'Setarile sunt salvate in memoria flash a ESP32 si se aplica imediat dupa salvare. Home Assistant trebuie sa aiba un broker MQTT activ (ex. Mosquitto add-on).':'Settings are stored in ESP32 flash memory and applied immediately. Home Assistant must have an active MQTT broker, such as the Mosquitto add-on.',
   'Adresa IP broker':'Broker IP address',
+  'Numar maxim de incercari consecutive':'Maximum consecutive attempts',
+  '0 = nelimitat. Dupa atingerea limitei, reconectarea se reia la repornire sau dupa salvarea configuratiei.':'0 = unlimited. After reaching the limit, retries resume after restart or saving the configuration.',
   'Utilizator':'Username',
   '(optional)':'(optional)',
   'Parola':'Password',
@@ -1040,10 +1052,18 @@ function updateData() {
       if (d.mqtt_connected) {
         bar.className = 'mqtt-bar mqtt-ok';
         bar.textContent = tr('MQTT: Conectat la broker \u2714', 'MQTT: Connected to broker \u2714');
+      } else if (d.mqtt_retry_limit_reached) {
+        bar.className = 'mqtt-bar mqtt-err';
+        bar.textContent = tr('MQTT: limita de incercari atinsa (',
+                             'MQTT: retry limit reached (') +
+                          d.mqtt_attempt_count + '/' + d.mqtt_max_attempts + ')';
       } else {
         bar.className = 'mqtt-bar mqtt-err';
         bar.textContent = tr('MQTT: Deconectat \u2014 verifica IP broker si WiFi',
-                             'MQTT: Disconnected \u2014 check broker IP and Wi-Fi');
+                             'MQTT: Disconnected \u2014 check broker IP and Wi-Fi') +
+                          (d.mqtt_max_attempts > 0
+                            ? ' (' + d.mqtt_attempt_count + '/' + d.mqtt_max_attempts + ')'
+                            : '');
       }
     })
     .catch(function() {
@@ -1079,10 +1099,15 @@ function renderRadarData(d) {
     connection.className = 'mqtt-bar mqtt-err';
     connection.textContent = tr('Radarul UART este disponibil in profilul ESP32-S3.',
                                 'UART radar support is available in the ESP32-S3 profile.');
-  } else if (!d.connected) {
+  } else if (!d.connected && Number(d.received_bytes) === 0) {
     connection.className = 'mqtt-bar mqtt-err';
-    connection.textContent = tr('LD2410C deconectat — verifica alimentarea si firele TX/RX.',
-                                'LD2410C disconnected — check power and TX/RX wiring.');
+    connection.textContent = tr('LD2410C: niciun octet pe RX — verifica TX radar si GND.',
+                                'LD2410C: no RX bytes — check radar TX and GND.');
+  } else if (!d.connected) {
+    connection.className = 'mqtt-bar mqtt-unknown';
+    connection.textContent = tr('Exista trafic UART, dar MyLD2410 nu a gasit un cadru valid la ',
+                                'UART traffic exists, but MyLD2410 found no valid frame at ') +
+      d.baud_rate + ' baud';
   } else {
     connection.className = 'mqtt-bar mqtt-ok';
     connection.textContent = 'LD2410C: UART OK | RX GPIO' + d.rx_pin +
@@ -1090,10 +1115,22 @@ function renderRadarData(d) {
   }
 
   var presence = document.getElementById('radarPresence');
-  presence.classList.toggle('active', !!d.presence && !!d.connected);
-  presence.textContent = d.connected && d.presence
-    ? tr('PREZENTA DETECTATA', 'PRESENCE DETECTED')
-    : tr('Fara prezenta', 'No presence');
+  var outAvailable = !!d.out_available;
+  var outActive = outAvailable && !!d.out_active;
+  presence.classList.toggle('active', outActive);
+  presence.classList.toggle('unavailable', !outAvailable);
+  if (!outAvailable) {
+    presence.textContent = tr('OUT: NECONFIGURAT', 'OUT: NOT CONFIGURED');
+  } else if (outActive) {
+    presence.textContent = 'OUT GPIO' + d.out_pin + ': ' +
+      tr('PREZENTA DETECTATA', 'PRESENCE DETECTED');
+  } else {
+    presence.textContent = 'OUT GPIO' + d.out_pin + ': ' +
+      tr('FARA PREZENTA', 'NO PRESENCE');
+  }
+  document.getElementById('radarOutPin').textContent = outAvailable
+    ? 'GPIO' + d.out_pin
+    : tr('neconfigurat', 'not configured');
 
   document.getElementById('radarMovingDistance').textContent =
     radarDistance(d.moving_distance_cm, d.connected && d.moving);
@@ -1108,6 +1145,10 @@ function renderRadarData(d) {
   document.getElementById('radarFrameAge').textContent = d.age_ms === null
     ? tr('Niciun cadru UART primit', 'No UART frame received')
     : tr('Ultimul cadru: ', 'Last frame: ') + d.age_ms + ' ms';
+  document.getElementById('radarUartDiagnostics').textContent =
+    tr('UART brut: ', 'Raw UART: ') + Number(d.received_bytes || 0) +
+    tr(' octeti | ultimul RX: ', ' bytes | last RX: ') +
+    (d.last_byte_age_ms === null ? '--' : d.last_byte_age_ms + ' ms');
 
   setRadarDot('radarMovingDot', d.connected && d.moving,
               d.moving_distance_cm, d.moving_energy, 202);
@@ -1661,6 +1702,7 @@ function loadMqttCfg() {
       document.getElementById('mqttBroker').value   = d.broker   || '';
       document.getElementById('mqttPort').value     = d.port     || 1883;
       document.getElementById('mqttClientId').value = d.client_id || 'esp32-ha-kit';
+      document.getElementById('mqttMaxAttempts').value = Number(d.max_attempts || 0);
       document.getElementById('mqttUser').value     = d.user     || '';
       document.getElementById('mqttPass').value     = '';  // parola nu se returneaza
       document.getElementById('mqttTopicState').value =
@@ -1689,10 +1731,18 @@ function loadMqttCfg() {
         bar.className = 'mqtt-bar mqtt-ok';
         bar.textContent = tr('MQTT: Conectat la ', 'MQTT: Connected to ') +
                           d.broker + ':' + d.port + ' \u2714';
+      } else if (d.retry_limit_reached) {
+        bar.className = 'mqtt-bar mqtt-err';
+        bar.textContent = tr('MQTT: limita de incercari atinsa (',
+                             'MQTT: retry limit reached (') +
+                          d.attempt_count + '/' + d.max_attempts + ')';
       } else {
         bar.className = 'mqtt-bar mqtt-err';
         bar.textContent = tr('MQTT: Deconectat de la ', 'MQTT: Disconnected from ') +
-                          d.broker + ':' + d.port;
+                          d.broker + ':' + d.port +
+                          (d.max_attempts > 0
+                            ? ' (' + d.attempt_count + '/' + d.max_attempts + ')'
+                            : '');
       }
     })
     .catch(function() {
@@ -1706,6 +1756,7 @@ function saveMqttCfg() {
   var broker   = document.getElementById('mqttBroker').value.trim();
   var port     = document.getElementById('mqttPort').value.trim() || '1883';
   var clientId = document.getElementById('mqttClientId').value.trim() || 'esp32-ha-kit';
+  var maxAttempts = document.getElementById('mqttMaxAttempts').value.trim() || '0';
   var user     = document.getElementById('mqttUser').value.trim();
   var pass     = document.getElementById('mqttPass').value;
   var topicState = document.getElementById('mqttTopicState').value.trim();
@@ -1718,6 +1769,11 @@ function saveMqttCfg() {
 
   if (!broker) {
     showMqttMsg(tr('Adresa IP broker este obligatorie!', 'Broker IP address is required!'), 'err');
+    return;
+  }
+  if (!/^\d+$/.test(maxAttempts) || Number(maxAttempts) < 0 || Number(maxAttempts) > 100) {
+    showMqttMsg(tr('Numarul de incercari trebuie sa fie intre 0 si 100.',
+                   'The retry count must be between 0 and 100.'), 'err');
     return;
   }
   var topics = [topicState, topicRelayState, topicRelayCommand, topicDigitalInput];
@@ -1748,6 +1804,7 @@ function saveMqttCfg() {
   var body = 'broker=' + encodeURIComponent(broker)
            + '&port='      + encodeURIComponent(port)
            + '&client_id=' + encodeURIComponent(clientId)
+           + '&max_attempts=' + encodeURIComponent(maxAttempts)
            + '&user='      + encodeURIComponent(user)
            + '&pass='      + encodeURIComponent(pass)
            + '&topic_state=' + encodeURIComponent(topicState)
@@ -2037,8 +2094,8 @@ function gpioLabel(pin) {
 function selectedPinRoles() {
   var roles = {};
   if (hardwareData && String(hardwareData.profile || '').indexOf('S3') >= 0) {
-    roles[10] = 'LD2410C RX';
-    roles[11] = 'LD2410C TX';
+    roles[18] = 'LD2410C RX';
+    roles[17] = 'LD2410C TX';
   }
   var fields = [
     ['hwDht', 'DHT'], ['hwPir', 'PIR'], ['hwRelay', 'releu'],
